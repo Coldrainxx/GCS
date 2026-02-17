@@ -67,9 +67,9 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="50"/>
                 <!-- Top Bar -->
-                <RowDefinition Height="*"/>
+                <RowDefinition/>
                 <!-- Main Content -->
-                <RowDefinition Height="80"/>
+                <RowDefinition Height="50"/>
                 <!-- Bottom Panel -->
             </Grid.RowDefinitions>
 

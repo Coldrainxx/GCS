@@ -33,7 +33,7 @@ public interface IMissionService
     /// Called by handler when MISSION_ITEM_INT is received (during download).
     /// </summary>
     Task OnMissionItem(MissionItem item, CancellationToken ct);
-
+    Task ClearAsync(CancellationToken ct);
     /// <summary>
     /// Called by handler when MISSION_ACK is received.
     /// </summary>

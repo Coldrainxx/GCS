@@ -6,7 +6,7 @@
              xmlns:views="clr-namespace:GCS.Views"
              mc:Ignorable="d" 
              d:DesignHeight="800" d:DesignWidth="500">
-    
+
     <UserControl.Resources>
         <SolidColorBrush x:Key="PanelBackground" Color="#151922"/>
         <SolidColorBrush x:Key="CardBackground" Color="#1C2128"/>
@@ -16,7 +16,7 @@
         <SolidColorBrush x:Key="AccentCyan" Color="#39D0D8"/>
         <SolidColorBrush x:Key="AccentGreen" Color="#3FB950"/>
         <SolidColorBrush x:Key="AccentOrange" Color="#FF9500"/>
-        
+
         <Style x:Key="MetricCardStyle" TargetType="Border">
             <Setter Property="Background" Value="{StaticResource CardBackground}"/>
             <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
@@ -25,21 +25,21 @@
             <Setter Property="Padding" Value="15,10"/>
             <Setter Property="Margin" Value="5"/>
         </Style>
-        
+
         <Style x:Key="MetricLabelStyle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource SecondaryText}"/>
             <Setter Property="FontSize" Value="10"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Margin" Value="0,0,0,4"/>
         </Style>
-        
+
         <Style x:Key="MetricValueStyle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource PrimaryText}"/>
             <Setter Property="FontSize" Value="28"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="FontFamily" Value="Consolas"/>
         </Style>
-        
+
         <Style x:Key="MetricUnitStyle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource AccentCyan}"/>
             <Setter Property="FontSize" Value="14"/>
@@ -47,13 +47,13 @@
             <Setter Property="VerticalAlignment" Value="Bottom"/>
             <Setter Property="Margin" Value="5,0,0,3"/>
         </Style>
-        
+
         <!-- Custom Tab Style -->
         <Style x:Key="ModernTabControl" TargetType="TabControl">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
         </Style>
-        
+
         <Style x:Key="ModernTabItem" TargetType="TabItem">
             <Setter Property="Foreground" Value="{StaticResource SecondaryText}"/>
             <Setter Property="Background" Value="Transparent"/>
@@ -90,8 +90,10 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="260"/> <!-- Artificial Horizon -->
-            <RowDefinition Height="*"/>   <!-- Tabbed Content -->
+            <RowDefinition Height="320"/>
+            <!-- Artificial Horizon -->
+            <RowDefinition/>
+            <!-- Tabbed Content -->
         </Grid.RowDefinitions>
 
         <!-- ARTIFICIAL HORIZON -->
@@ -103,7 +105,7 @@
             <Grid>
                 <views:ArtificialHorizon Roll="{Binding Roll}" 
                                         Pitch="{Binding Pitch}"/>
-                
+
                 <!-- Overlay Label -->
                 <TextBlock Text="ATTITUDE" 
                           HorizontalAlignment="Left" 
@@ -112,7 +114,7 @@
                           Style="{StaticResource MetricLabelStyle}"
                           Foreground="{StaticResource PrimaryText}"
                           FontSize="11"/>
-                
+
                 <!-- Angle Readout -->
                 <Border Background="#1C2128" 
                        BorderBrush="{StaticResource BorderBrush}"
@@ -135,7 +137,7 @@
                                   Foreground="{StaticResource AccentCyan}"
                                   FontSize="11"
                                   Margin="2,0,15,0"/>
-                        
+
                         <TextBlock Text="PITCH: " 
                                   Foreground="{StaticResource SecondaryText}"
                                   FontSize="11"
@@ -157,46 +159,46 @@
         <TabControl Grid.Row="1" 
                     Style="{StaticResource ModernTabControl}"
                     Margin="10,5,10,10">
-            
+
             <!-- TAB 1: DATA -->
             <TabItem Header="DATA" Style="{StaticResource ModernTabItem}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <views:DataTabView DataContext="{Binding}"/>
                 </ScrollViewer>
             </TabItem>
-            
+
             <!-- TAB 2: MESSAGES -->
             <TabItem Header="MESSAGES" Style="{StaticResource ModernTabItem}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <views:MessagesTabView DataContext="{Binding DataContext.Messages, RelativeSource={RelativeSource AncestorType=Window}}"/>
                 </ScrollViewer>
             </TabItem>
-            
+
             <!-- TAB 3: RC CHANNELS -->
             <TabItem Header="RC" Style="{StaticResource ModernTabItem}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <views:RcChannelsTabView DataContext="{Binding DataContext.RcChannels, RelativeSource={RelativeSource AncestorType=Window}}"/>
                 </ScrollViewer>
             </TabItem>
-            
+
             <!-- TAB 4: PREARM -->
             <TabItem Header="PREARM" Style="{StaticResource ModernTabItem}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <views:PrearmTabView DataContext="{Binding DataContext.Preflight, RelativeSource={RelativeSource AncestorType=Window}}"/>
                 </ScrollViewer>
             </TabItem>
-            
+
             <!-- TAB 5: ACTIONS -->
             <TabItem Header="ACTIONS" Style="{StaticResource ModernTabItem}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <views:ActionsTabView DataContext="{Binding DataContext.Actions, RelativeSource={RelativeSource AncestorType=Window}}"/>
                 </ScrollViewer>
             </TabItem>
-            
+
             <!-- TAB 6: FAILSAFE -->
             <TabItem Header="FAILSAFE" Style="{StaticResource ModernTabItem}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                <views:FailsafeTabView DataContext="{Binding DataContext.Failsafe, 
+                    <views:FailsafeTabView DataContext="{Binding DataContext.Failsafe, 
         RelativeSource={RelativeSource AncestorType=Window}}"/>
                 </ScrollViewer>
             </TabItem>

@@ -101,6 +101,7 @@ public class MissionViewModel : ViewModelBase
     public ICommand UploadCommand { get; }
     public ICommand DownloadCommand { get; }
     public ICommand ClearCommand { get; }
+    public ICommand ClearOnFCCommand { get; }
     public ICommand RemoveSelectedCommand { get; }
     public ICommand InsertBeforeCommand { get; }
     public ICommand InsertAfterCommand { get; }
@@ -115,9 +116,11 @@ public class MissionViewModel : ViewModelBase
 
     public MissionViewModel()
     {
-        UploadCommand = new RelayCommand(async () => await UploadAsync(), () => IsConnected && !IsBusy && Waypoints.Count > 0);
+        // Upload now works even with 0 waypoints (sends empty mission to clear FC)
+        UploadCommand = new RelayCommand(async () => await UploadAsync(), () => IsConnected && !IsBusy);
         DownloadCommand = new RelayCommand(async () => await DownloadAsync(), () => IsConnected && !IsBusy);
         ClearCommand = new RelayCommand(ClearAll, () => Waypoints.Count > 0 && !IsBusy);
+        ClearOnFCCommand = new RelayCommand(async () => await ClearOnFCAsync(), () => IsConnected && !IsBusy);
         RemoveSelectedCommand = new RelayCommand(RemoveSelected, () => SelectedIndex >= 0 && !IsBusy);
         InsertBeforeCommand = new RelayCommand(InsertBefore, () => SelectedIndex >= 0 && !IsBusy);
         InsertAfterCommand = new RelayCommand(InsertAfter, () => SelectedIndex >= 0 && !IsBusy);
@@ -410,19 +413,34 @@ public class MissionViewModel : ViewModelBase
 
     #endregion
 
-    #region Upload/Download
+    #region Upload/Download/Clear on FC
 
     private async Task UploadAsync()
     {
-        if (_missionService == null || Waypoints.Count == 0) return;
+        if (_missionService == null) return;
+
         try
         {
             IsBusy = true;
-            Status = "Uploading...";
-            var items = Waypoints.Select((w, i) => w.ToMissionItem() with { Sequence = i }).ToList();
-            await _missionService.UploadAsync(items, CancellationToken.None);
+
+            if (Waypoints.Count == 0)
+            {
+                Status = "Clearing mission on FC...";
+                await _missionService.ClearAsync(CancellationToken.None);
+                Status = "Mission cleared on FC";
+            }
+            else
+            {
+                Status = "Uploading...";
+                var items = Waypoints.Select((w, i) => w.ToMissionItem() with { Sequence = i }).ToList();
+                await _missionService.UploadAsync(items, CancellationToken.None);
+            }
         }
-        catch (Exception ex) { Status = $"Upload failed: {ex.Message}"; IsBusy = false; }
+        catch (Exception ex)
+        {
+            Status = $"Upload failed: {ex.Message}";
+            IsBusy = false;
+        }
     }
 
     private async Task DownloadAsync()
@@ -447,6 +465,24 @@ public class MissionViewModel : ViewModelBase
             });
         }
         catch (Exception ex) { Status = $"Download failed: {ex.Message}"; IsBusy = false; }
+    }
+
+    private async Task ClearOnFCAsync()
+    {
+        if (_missionService == null) return;
+        try
+        {
+            IsBusy = true;
+            Status = "Clearing mission on FC...";
+            await _missionService.ClearAsync(CancellationToken.None);
+            Status = "Mission cleared on FC";
+            IsBusy = false;
+        }
+        catch (Exception ex)
+        {
+            Status = $"Clear failed: {ex.Message}";
+            IsBusy = false;
+        }
     }
 
     #endregion

@@ -170,6 +170,17 @@ public sealed class MissionService : IMissionService
         await _sender.SendAsync(packet, ct);
     }
 
+    public async Task ClearAsync(CancellationToken ct)
+    {
+        var packet = MissionClearAllCommand.Create(
+            _backend.SystemId,
+            _backend.ComponentId,
+            ref _seq);
+
+        await _sender.SendAsync(packet, ct);
+
+        System.Diagnostics.Debug.WriteLine("[MissionService] Sent MISSION_CLEAR_ALL");
+    }
     public async Task OnMissionItem(MissionItem item, CancellationToken ct)
     {
         if (!_isDownloading)

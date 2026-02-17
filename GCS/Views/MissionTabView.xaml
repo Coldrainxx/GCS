@@ -55,7 +55,7 @@
 
         <Style x:Key="ActionButton" TargetType="Button" BasedOn="{StaticResource SmallButton}">
             <Setter Property="Height" Value="32"/>
-            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontSize" Value="10"/>
         </Style>
 
         <Style x:Key="LabelText" TargetType="TextBlock">
@@ -82,6 +82,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -333,11 +334,24 @@
             <Button Grid.Column="3" Content="+▼" Command="{Binding InsertAfterCommand}" Style="{StaticResource SmallButton}" ToolTip="Insert After"/>
             <Button Grid.Column="4" Content="🏠" Command="{Binding SetHomeCommand}" Style="{StaticResource SmallButton}" ToolTip="Set as Home"/>
             <Button Grid.Column="5" Content="✕" Command="{Binding RemoveSelectedCommand}" Style="{StaticResource SmallButton}" 
-                   Background="{StaticResource AccentRed}" ToolTip="Remove"/>
+                   Background="{StaticResource AccentRed}" ToolTip="Remove Selected"/>
+        </Grid>
+
+        <!-- Clear Buttons Row -->
+        <Grid Grid.Row="6" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Button Grid.Column="0" Content="🗑 CLEAR LOCAL" Command="{Binding ClearCommand}" 
+                   Style="{StaticResource ActionButton}" Background="#6E4040" ToolTip="Clear waypoints from list"/>
+            <Button Grid.Column="1" Content="🗑 CLEAR ON FC" Command="{Binding ClearOnFCCommand}" 
+                   Style="{StaticResource ActionButton}" Background="{StaticResource AccentRed}" ToolTip="Clear mission on Flight Controller"/>
         </Grid>
 
         <!-- Main Action Buttons -->
-        <Grid Grid.Row="6">
+        <Grid Grid.Row="7">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="*"/>
@@ -346,7 +360,7 @@
             </Grid.ColumnDefinitions>
 
             <Button Grid.Column="0" Content="⬆ UPLOAD" Command="{Binding UploadCommand}" 
-                   Style="{StaticResource ActionButton}" Background="{StaticResource AccentGreen}"/>
+                   Style="{StaticResource ActionButton}" Background="{StaticResource AccentGreen}" ToolTip="Upload to FC (empty = clear)"/>
             <Button Grid.Column="1" Content="⬇ DOWN" Command="{Binding DownloadCommand}" 
                    Style="{StaticResource ActionButton}" Background="{StaticResource AccentBlue}"/>
             <Button Grid.Column="2" Content="📁 IMPORT" Command="{Binding ImportCommand}" 
