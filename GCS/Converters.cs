@@ -118,18 +118,38 @@ public class NullToVisibilityConverter : IValueConverter
 /// <summary>
 /// Converts a percentage (0-100) and parent width to actual pixel width
 /// </summary>
-public class PercentToWidthConverter : IMultiValueConverter
+public class PercentToWidthConverter : IValueConverter, IMultiValueConverter
 {
+    // Single value version (uses parameter as max width)
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value == null || value == DependencyProperty.UnsetValue)
+            return 0.0;
+
+        double percent = System.Convert.ToDouble(value);
+        double maxWidth = 100;
+
+        if (parameter != null)
+            double.TryParse(parameter.ToString(), out maxWidth);
+
+        return (percent / 100.0) * maxWidth;
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+
+    // Multi-value version (second binding is actual width)
     public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
     {
-        if (values.Length >= 2 &&
-            values[0] is double percent &&
-            values[1] is double parentWidth)
-        {
-            return Math.Max(0, (percent / 100.0) * parentWidth);
-        }
+        if (values.Length < 2 || values[0] == DependencyProperty.UnsetValue || values[1] == DependencyProperty.UnsetValue)
+            return 0.0;
 
-        return 0.0;
+        double percent = System.Convert.ToDouble(values[0]);
+        double containerWidth = System.Convert.ToDouble(values[1]);
+
+        return (percent / 100.0) * containerWidth;
     }
 
     public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
@@ -209,6 +229,23 @@ public class BoolToOnOffConverter : IValueConverter
         if (value is bool b)
             return b ? "DISABLE" : "ENABLE";
         return "TOGGLE";
+    }
+
+    public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        throw new NotImplementedException();
+    }
+}
+public class ChannelVisibilityConverter : IValueConverter
+{
+    public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+    {
+        if (value is int channelNumber)
+        {
+            // Hide channels 1-4 (shown in primary controls section)
+            return channelNumber > 4 ? Visibility.Visible : Visibility.Collapsed;
+        }
+        return Visibility.Visible;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)

@@ -1,4 +1,5 @@
 ﻿using GCS.Core.Domain;
+using GCS.Core.Mavlink.CommandAck;
 using GCS.Core.Mavlink.Messages;
 
 namespace GCS.Core.Mavlink;
@@ -70,7 +71,11 @@ public interface IMavlinkBackend : IDisposable
         float param5 = 0, float param6 = 0, float param7 = 0,
         byte confirmation = 0,
         CancellationToken ct = default);
-
+    Task<CommandAckResult> SendCommandWithAckAsync(
+        ushort command,
+        float param1 = 0, float param2 = 0, float param3 = 0, float param4 = 0,
+        float param5 = 0, float param6 = 0, float param7 = 0,
+    CancellationToken ct = default);
     Task SendSetModeAsync(
         byte baseMode,
         uint customMode,

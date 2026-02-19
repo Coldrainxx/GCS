@@ -153,6 +153,7 @@ public class MainViewModel : ViewModelBase, IDisposable
                 _stateStore, _healthMonitor, preflightPolicy, syncContext);
             _preflightEngine.PreflightChanged += OnPreflightChanged;
 
+
             // 10. Start backend
             _cts = new CancellationTokenSource();
             await _backend.StartAsync(_cts.Token);

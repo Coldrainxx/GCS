@@ -1,5 +1,6 @@
-using GCS.Core.Domain;
+﻿using GCS.Core.Domain;
 using GCS.Core.Mavlink;
+using GCS.Core.Mavlink.CommandAck;
 using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
@@ -79,8 +80,19 @@ public class ActionsViewModel : ViewModelBase
         try
         {
             Debug.WriteLine("[ActionsViewModel] Sending DISARM command...");
-            await _backend.SendArmDisarmAsync(arm: false);
-            Debug.WriteLine("[ActionsViewModel] DISARM sent");
+
+            // Use the ACK version - this waits for response
+            var result = await _backend.SendCommandWithAckAsync(
+                command: 400,  // MAV_CMD_COMPONENT_ARM_DISARM
+                param1: 0f);   // 0 = disarm
+
+            Debug.WriteLine($"[ActionsViewModel] DISARM result: {result}");
+
+            // Update UI immediately based on result
+            if (result == CommandAckResult.Accepted)
+            {
+                // Command accepted - UI will update from heartbeat
+            }
         }
         catch (Exception ex)
         {
