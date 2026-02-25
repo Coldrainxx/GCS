@@ -187,48 +187,6 @@
                 </Grid>
             </Border>
 
-            <!-- GPS Failsafe -->
-            <Border Background="{StaticResource CardBackground}"
-                    BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="6"
-                    Padding="15"
-                    Margin="5">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <Ellipse Grid.Column="0" Style="{StaticResource StatusEllipse}">
-                        <Ellipse.Fill>
-                            <SolidColorBrush Color="{Binding GpsStatusColor}"/>
-                        </Ellipse.Fill>
-                    </Ellipse>
-
-                    <StackPanel Grid.Column="1">
-                        <TextBlock Text="GPS FAILSAFE" 
-                                  Foreground="{StaticResource PrimaryText}"
-                                  FontSize="13"
-                                  FontWeight="Bold"/>
-                        <TextBlock Text="Automatic on GPS loss" 
-                                  Foreground="{StaticResource SecondaryText}"
-                                  FontSize="10"/>
-                    </StackPanel>
-
-                    <TextBlock Grid.Column="2"
-                              Text="{Binding GpsStatusText}"
-                              FontSize="10"
-                              FontWeight="Bold"
-                              VerticalAlignment="Center">
-                        <TextBlock.Foreground>
-                            <SolidColorBrush Color="{Binding GpsStatusColor}"/>
-                        </TextBlock.Foreground>
-                    </TextBlock>
-                </Grid>
-            </Border>
-
             <!-- GCS Failsafe -->
             <Border Background="{StaticResource CardBackground}"
                     BorderBrush="{StaticResource BorderBrush}"
