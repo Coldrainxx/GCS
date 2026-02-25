@@ -1,11 +1,11 @@
-<UserControl x:Class="GCS.Views.ActionsTabView"
+﻿<UserControl x:Class="GCS.Views.ActionsTabView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              mc:Ignorable="d" 
-             d:DesignHeight="500" d:DesignWidth="480">
-    
+             d:DesignHeight="600" d:DesignWidth="400">
+
     <UserControl.Resources>
         <SolidColorBrush x:Key="CardBackground" Color="#1C2128"/>
         <SolidColorBrush x:Key="BorderBrush" Color="#2D333D"/>
@@ -13,183 +13,265 @@
         <SolidColorBrush x:Key="SecondaryText" Color="#8B949E"/>
         <SolidColorBrush x:Key="AccentGreen" Color="#3FB950"/>
         <SolidColorBrush x:Key="AccentRed" Color="#F85149"/>
-        <SolidColorBrush x:Key="AccentOrange" Color="#FF9500"/>
-        
+        <SolidColorBrush x:Key="AccentBlue" Color="#58A6FF"/>
+        <SolidColorBrush x:Key="AccentOrange" Color="#D29922"/>
+        <SolidColorBrush x:Key="AccentPurple" Color="#A371F7"/>
+        <SolidColorBrush x:Key="VtolColor" Color="#39D0D8"/>
+
         <Style x:Key="ActionButton" TargetType="Button">
-            <Setter Property="Height" Value="50"/>
-            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Margin" Value="4"/>
+            <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Margin" Value="5"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="2"
-                                CornerRadius="6">
+                        <Border Background="{TemplateBinding Background}" 
+                               CornerRadius="6"
+                               Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Opacity" Value="0.8"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.4"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
     </UserControl.Resources>
 
-    <StackPanel Margin="10">
-        
-        <!-- ARM / DISARM SECTION -->
-        <TextBlock Text="VEHICLE CONTROL" 
-                  Foreground="{StaticResource SecondaryText}"
-                  FontSize="11"
-                  FontWeight="Bold"
-                  Margin="5,10,5,10"/>
-        
-        <Grid>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
-            
-            <!-- ARM Button -->
-            <Button Grid.Column="0"
-                    Content="ARM"
-                    Command="{Binding ArmCommand}"
-                    Style="{StaticResource ActionButton}"
-                    Background="{StaticResource AccentGreen}"
-                    BorderBrush="{StaticResource AccentGreen}"
-                    Foreground="#0A0E14"/>
-            
-            <!-- DISARM Button -->
-            <Button Grid.Column="1"
-                    Content="DISARM"
-                    Command="{Binding DisarmCommand}"
-                    Style="{StaticResource ActionButton}"
-                    Background="{StaticResource AccentRed}"
-                    BorderBrush="{StaticResource AccentRed}"
-                    Foreground="#0A0E14"/>
-        </Grid>
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="10">
 
-        <!-- QUICK ACTIONS -->
-        <TextBlock Text="QUICK ACTIONS" 
-                  Foreground="{StaticResource SecondaryText}"
-                  FontSize="11"
-                  FontWeight="Bold"
-                  Margin="5,20,5,10"/>
-        
-        <Button Content="RETURN TO LAUNCH (RTL)"
-                Command="{Binding RtlCommand}"
-                Style="{StaticResource ActionButton}"
-                Background="{StaticResource AccentOrange}"
-                BorderBrush="{StaticResource AccentOrange}"
-                Foreground="#0A0E14"/>
-        
-        <Button Content="LOITER"
-                Command="{Binding LoiterCommand}"
-                Style="{StaticResource ActionButton}"
-                Background="{StaticResource CardBackground}"
-                BorderBrush="{StaticResource BorderBrush}"
-                Foreground="{StaticResource PrimaryText}"/>
-        
-        <Button Content="LAND"
-                Command="{Binding LandCommand}"
-                Style="{StaticResource ActionButton}"
-                Background="{StaticResource CardBackground}"
-                BorderBrush="{StaticResource BorderBrush}"
-                Foreground="{StaticResource PrimaryText}"/>
+            <!-- Current Status -->
+            <Border Background="{StaticResource CardBackground}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16"
+                    Margin="0,0,0,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
 
-        <!-- FLIGHT MODE SELECTION -->
-        <TextBlock Text="FLIGHT MODE" 
-                  Foreground="{StaticResource SecondaryText}"
-                  FontSize="11"
-                  FontWeight="Bold"
-                  Margin="5,20,5,10"/>
-        
-        <Border Background="{StaticResource CardBackground}"
-                BorderBrush="{StaticResource BorderBrush}"
-                BorderThickness="1"
-                CornerRadius="6"
-                Padding="12"
-                Margin="5">
-            <StackPanel>
-                <TextBlock Text="CURRENT MODE" 
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="FLIGHT MODE" 
+                                  Foreground="{StaticResource SecondaryText}"
+                                  FontSize="10"/>
+                        <TextBlock Text="{Binding FlightMode}" 
+                                  Foreground="{StaticResource PrimaryText}"
+                                  FontSize="18"
+                                  FontWeight="Bold"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                        <TextBlock Text="ARM STATUS" 
+                                  Foreground="{StaticResource SecondaryText}"
+                                  FontSize="10"/>
+                        <TextBlock Text="{Binding ArmStatusText}" 
+                                  FontSize="18"
+                                  FontWeight="Bold">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsArmed}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource AccentRed}"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsArmed}" Value="False">
+                                            <Setter Property="Foreground" Value="{StaticResource AccentGreen}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- ARM / DISARM -->
+            <TextBlock Text="ARM CONTROL" 
+                      Foreground="{StaticResource SecondaryText}"
+                      FontSize="11"
+                      FontWeight="Bold"
+                      Margin="5,0,0,8"/>
+
+            <Border Background="{StaticResource CardBackground}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="12"
+                    Margin="0,0,0,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Button Grid.Column="0"
+                           Content="🔓 ARM"
+                           Command="{Binding ArmCommand}"
+                           Background="{StaticResource AccentGreen}"
+                           Style="{StaticResource ActionButton}"/>
+
+                    <Button Grid.Column="1"
+                           Content="🔒 DISARM"
+                           Command="{Binding DisarmCommand}"
+                           Background="{StaticResource AccentRed}"
+                           Style="{StaticResource ActionButton}"/>
+                </Grid>
+            </Border>
+
+            <!-- Fixed-Wing Modes -->
+            <TextBlock Text="FIXED-WING MODES" 
+                      Foreground="{StaticResource SecondaryText}"
+                      FontSize="11"
+                      FontWeight="Bold"
+                      Margin="5,0,0,8"/>
+
+            <Border Background="{StaticResource CardBackground}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="12"
+                    Margin="0,0,0,12">
+                <WrapPanel>
+                    <Button Content="RTL"
+                           Command="{Binding RtlCommand}"
+                           Background="{StaticResource AccentOrange}"
+                           Style="{StaticResource ActionButton}"
+                           Width="80"/>
+
+                    <Button Content="LOITER"
+                           Command="{Binding LoiterCommand}"
+                           Background="{StaticResource AccentBlue}"
+                           Style="{StaticResource ActionButton}"
+                           Width="80"/>
+
+                    <Button Content="AUTO"
+                           Command="{Binding AutoCommand}"
+                           Background="{StaticResource AccentPurple}"
+                           Style="{StaticResource ActionButton}"
+                           Width="80"/>
+
+                    <Button Content="GUIDED"
+                           Command="{Binding GuidedCommand}"
+                           Background="{StaticResource AccentBlue}"
+                           Style="{StaticResource ActionButton}"
+                           Width="80"/>
+
+                    <Button Content="CRUISE"
+                           Command="{Binding CruiseCommand}"
+                           Background="#6E7681"
+                           Style="{StaticResource ActionButton}"
+                           Width="80"/>
+                </WrapPanel>
+            </Border>
+
+            <!-- VTOL Modes -->
+            <TextBlock Text="VTOL MODES (QUADPLANE)" 
+                      Foreground="{StaticResource VtolColor}"
+                      FontSize="11"
+                      FontWeight="Bold"
+                      Margin="5,0,0,8"/>
+
+            <Border Background="{StaticResource CardBackground}"
+                    BorderBrush="{StaticResource VtolColor}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="12"
+                    Margin="0,0,0,12">
+                <WrapPanel>
+                    <Button Content="QHOVER"
+                           Command="{Binding QHoverCommand}"
+                           Background="{StaticResource VtolColor}"
+                           Style="{StaticResource ActionButton}"
+                           Width="80"/>
+
+                    <Button Content="QLOITER"
+                           Command="{Binding QLoiterCommand}"
+                           Background="{StaticResource VtolColor}"
+                           Style="{StaticResource ActionButton}"
+                           Width="80"/>
+
+                    <Button Content="QRTL"
+                           Command="{Binding QRtlCommand}"
+                           Background="#FF9800"
+                           Style="{StaticResource ActionButton}"
+                           Width="80"/>
+
+                    <Button Content="QLAND"
+                           Command="{Binding QLandCommand}"
+                           Background="{StaticResource AccentRed}"
+                           Style="{StaticResource ActionButton}"
+                           Width="80"/>
+                </WrapPanel>
+            </Border>
+
+            <!-- Mode Selection Dropdown -->
+            <TextBlock Text="ALL MODES" 
+                      Foreground="{StaticResource SecondaryText}"
+                      FontSize="11"
+                      FontWeight="Bold"
+                      Margin="5,0,0,8"/>
+
+            <Border Background="{StaticResource CardBackground}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="12"
+                    Margin="0,0,0,12">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <ComboBox Grid.Column="0"
+                             ItemsSource="{Binding AvailableModes}"
+                             SelectedIndex="{Binding SelectedModeIndex}"
+                             Background="#0D1117"
+                             Foreground="{StaticResource PrimaryText}"
+                             Padding="8,6"
+                             Margin="0,0,8,0">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding DisplayName}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{StaticResource PrimaryText}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsVtol}" Value="True">
+                                                    <Setter Property="Foreground" Value="{StaticResource VtolColor}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+
+                    <Button Grid.Column="1"
+                           Content="SET MODE"
+                           Command="{Binding SetModeCommand}"
+                           Background="{StaticResource AccentBlue}"
+                           Style="{StaticResource ActionButton}"/>
+                </Grid>
+            </Border>
+
+            <!-- Command Result -->
+            <Border Background="#0D1117"
+                    CornerRadius="6"
+                    Padding="12,8"
+                    Margin="0,0,0,12">
+                <TextBlock Text="{Binding LastCommandResult}" 
                           Foreground="{StaticResource SecondaryText}"
-                          FontSize="10"
-                          FontWeight="Bold"
-                          Margin="0,0,0,8"/>
-                
-                <TextBlock Text="{Binding FlightMode}" 
-                          Foreground="{StaticResource AccentOrange}"
-                          FontSize="20"
-                          FontWeight="Bold"
-                          HorizontalAlignment="Center"
-                          Margin="0,0,0,15"/>
-                
-                <TextBlock Text="SELECT NEW MODE" 
-                          Foreground="{StaticResource SecondaryText}"
-                          FontSize="10"
-                          FontWeight="Bold"
-                          Margin="0,0,0,8"/>
-                
-                <ComboBox x:Name="ModeSelector"
-                         SelectedIndex="{Binding SelectedModeIndex}"
-                         Height="36"
-                         FontSize="13"
-                         Background="#0A0E14"
-                         Foreground="{StaticResource PrimaryText}"
-                         BorderBrush="{StaticResource BorderBrush}">
-                    <ComboBoxItem Content="MANUAL"/>
-                    <ComboBoxItem Content="STABILIZE"/>
-                    <ComboBoxItem Content="FLY BY WIRE A (FBWA)"/>
-                    <ComboBoxItem Content="FLY BY WIRE B (FBWB)"/>
-                    <ComboBoxItem Content="AUTO"/>
-                    <ComboBoxItem Content="RTL"/>
-                    <ComboBoxItem Content="LOITER"/>
-                    <ComboBoxItem Content="CIRCLE"/>
-                    <ComboBoxItem Content="GUIDED"/>
-                    <ComboBoxItem Content="CRUISE"/>
-                    <ComboBoxItem Content="AUTOTUNE"/>
-                </ComboBox>
-                
-                <Button Content="SET MODE"
-                       Command="{Binding SetModeCommand}"
-                       Height="40"
-                       Margin="0,15,0,0"
-                       Background="{StaticResource AccentGreen}"
-                       BorderBrush="{StaticResource AccentGreen}"
-                       Foreground="#0A0E14"
-                       FontWeight="Bold"
-                       FontSize="13"
-                       Cursor="Hand">
-                    <Button.Template>
-                        <ControlTemplate TargetType="Button">
-                            <Border Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="0"
-                                    CornerRadius="6">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Opacity" Value="0.8"/>
-                                </Trigger>
-                                <Trigger Property="IsEnabled" Value="False">
-                                    <Setter Property="Opacity" Value="0.4"/>
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Button.Template>
-                </Button>
-            </StackPanel>
-        </Border>
+                          FontSize="11"
+                          FontFamily="Consolas"/>
+            </Border>
 
-    </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
 </UserControl>

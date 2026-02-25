@@ -2,28 +2,40 @@
 
 public enum FlightMode
 {
-    // --- Fixed-wing ---
-    Manual,
-    Circle,
-    Stabilize,
-    Training,
-    Acro,
-    Fbwa,
-    Fbwb,
-    Cruise,
-    Autotune,
-    Auto,
-    Rtl,
-    Loiter,
-    Takeoff,
-    AvoidAdsb,
-    Guided,
-    Initialising,
+    // ═══════════════════════════════════════════════════════════════
+    // Fixed-Wing Modes (0-15)
+    // ═══════════════════════════════════════════════════════════════
+    Manual = 0,
+    Circle = 1,
+    Stabilize = 2,
+    Training = 3,
+    Acro = 4,
+    Fbwa = 5,
+    Fbwb = 6,
+    Cruise = 7,
+    Autotune = 8,
+    Auto = 10,
+    Rtl = 11,
+    Loiter = 12,
+    Takeoff = 13,
+    AvoidAdsb = 14,
+    Guided = 15,
+    Initialising = 16,
 
-    // --- VTOL (QuadPlane) ---
-    QStabilize,
-    QHover,
-    QLoiter,
-    QLand,
-    QRtl
+    // ═══════════════════════════════════════════════════════════════
+    // QuadPlane VTOL Modes (17-24)
+    // ═══════════════════════════════════════════════════════════════
+    QStabilize = 17,
+    QHover = 18,
+    QLoiter = 19,
+    QLand = 20,
+    QRtl = 21,
+    QAutotune = 22,
+    QAcro = 23,
+    Thermal = 24,
+
+    // ═══════════════════════════════════════════════════════════════
+    // Unknown / Not Mapped
+    // ═══════════════════════════════════════════════════════════════
+    Unknown = 255
 }
