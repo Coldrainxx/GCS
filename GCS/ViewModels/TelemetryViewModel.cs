@@ -18,6 +18,10 @@ public class TelemetryViewModel : ViewModelBase
     private float _voltage, _current;
     private int _batteryRemaining;
     private bool _linkAlive, _attitudeFresh, _positionFresh;
+    private byte _gpsFixType;
+    private byte _gpsSatellites;
+    private string _gpsFixString = "NO GPS";
+    private float _gpsHdop;
 
     public bool IsConnected { get => _isConnected; set => SetProperty(ref _isConnected, value); }
     public byte SystemId { get => _systemId; set => SetProperty(ref _systemId, value); }
@@ -45,6 +49,32 @@ public class TelemetryViewModel : ViewModelBase
     public float Voltage { get => _voltage; set => SetProperty(ref _voltage, value); }
     public float Current { get => _current; set => SetProperty(ref _current, value); }
     public int BatteryRemaining { get => _batteryRemaining; set => SetProperty(ref _batteryRemaining, value); }
+
+    public byte GpsFixType
+    {
+        get => _gpsFixType;
+        set => SetProperty(ref _gpsFixType, value);
+    }
+
+    public byte GpsSatellites
+    {
+        get => _gpsSatellites;
+        set => SetProperty(ref _gpsSatellites, value);
+    }
+
+    public string GpsFixString
+    {
+        get => _gpsFixString;
+        set => SetProperty(ref _gpsFixString, value);
+    }
+
+    public float GpsHdop
+    {
+        get => _gpsHdop;
+        set => SetProperty(ref _gpsHdop, value);
+    }
+
+    public bool HasGpsFix => GpsFixType >= 2;
 
     public bool LinkAlive { get => _linkAlive; set => SetProperty(ref _linkAlive, value); }
     public bool AttitudeFresh { get => _attitudeFresh; set => SetProperty(ref _attitudeFresh, value); }
@@ -75,6 +105,14 @@ public class TelemetryViewModel : ViewModelBase
             Roll = state.Attitude.RollRad * RadToDeg;
             Pitch = state.Attitude.PitchRad * RadToDeg;
             Yaw = state.Attitude.YawRad * RadToDeg;
+        }
+
+        if (state.Gps != null)
+        {
+            GpsFixType = state.Gps.FixType;
+            GpsSatellites = state.Gps.SatellitesVisible;
+            GpsFixString = state.Gps.FixTypeString;
+            GpsHdop = state.Gps.HdopMeters;
         }
 
         if (state.Position != null)
@@ -119,6 +157,10 @@ public class TelemetryViewModel : ViewModelBase
         Groundspeed = Airspeed = ClimbRate = 0;
         Voltage = Current = 0; BatteryRemaining = 0;
         LinkAlive = AttitudeFresh = PositionFresh = false;
+        GpsFixType = 0;
+        GpsSatellites = 0;
+        GpsFixString = "NO GPS";
+        GpsHdop = 0;
 
         OnPropertyChanged(nameof(ArmedStatus));
         OnPropertyChanged(nameof(ArmedColor));

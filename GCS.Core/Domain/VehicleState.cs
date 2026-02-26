@@ -7,5 +7,7 @@ public record VehicleState(
     VfrHudState? VfrHud,
     BatteryState? Battery,
     FlightMode? FlightMode,
+    GpsState? Gps,  // NEW
     bool IsArmed = false
+
 );

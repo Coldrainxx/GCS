@@ -16,6 +16,7 @@ public interface IMavlinkBackend : IDisposable
     event Action<VfrHudState>? VfrHudReceived;
     event Action<BatteryState>? BatteryReceived;
     event Action<RcChannelsData>? RcChannelsReceived;
+    event Action<GpsState>? GpsStateReceived;  // ← ADD THIS
 
     // ═══════════════════════════════════════════════════════════════
     // RX Events - Messages & Acks

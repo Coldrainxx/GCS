@@ -76,6 +76,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
     // ═══════════════════════════════════════════════════════════════
 
     public event Action<string, float>? ParameterReceived;
+    public event Action<GpsState>? GpsStateReceived;
 
     // ═══════════════════════════════════════════════════════════════
     // Events - Connection State
@@ -123,7 +124,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
             new SysStatusHandler(s => BatteryReceived?.Invoke(s)),
             new RcChannelsHandler(s => RcChannelsReceived?.Invoke(s)),
             new MissionRequestHandler(seq => MissionRequestReceived?.Invoke(seq)),
-            
+            new GpsRawIntHandler(s => GpsStateReceived?.Invoke(s)),
             // Message handlers
             new StatustextHandler(s => AutopilotMessageReceived?.Invoke(s)),
             
