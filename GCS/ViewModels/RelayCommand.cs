@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Windows.Input;
 
 namespace GCS.ViewModels;
@@ -48,9 +48,9 @@ public class RelayCommand<T> : ICommand
         remove => CommandManager.RequerySuggested -= value;
     }
 
-    public bool CanExecute(object? parameter) => 
+    public bool CanExecute(object? parameter) =>
         _canExecute?.Invoke((T?)parameter) ?? true;
 
-    public void Execute(object? parameter) => 
+    public void Execute(object? parameter) =>
         _execute((T?)parameter);
 }

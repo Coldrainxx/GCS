@@ -18,7 +18,7 @@ public class MessagesViewModel : ViewModelBase
     {
         ClearCommand = new RelayCommand(Clear);
     }
-
+    
     public void AddMessage(AutopilotMessage message)
     {
         // Must update ObservableCollection on UI thread

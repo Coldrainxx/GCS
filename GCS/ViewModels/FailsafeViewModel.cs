@@ -24,8 +24,8 @@ public class FailsafeViewModel : ViewModelBase
     private bool _batteryFailsafeTriggered;
     private float _batteryFailsafeVoltage = 10.5f;
 
-    // GPS Failsafe (FS_GCS_ENABLE for ArduPlane uses GCS, GPS is automatic)
-    private bool _gpsFailsafeEnabled = true; // GPS failsafe is usually always on
+    // GPS Failsafe
+    private bool _gpsFailsafeEnabled = true;
     private bool _gpsFailsafeTriggered;
 
     // GCS Failsafe (FS_GCS_ENABLE)
@@ -156,10 +156,10 @@ public class FailsafeViewModel : ViewModelBase
         _setParamFunc = setParamFunc;
         _requestParamFunc = requestParamFunc;
 
-        ToggleRcFailsafeCommand = new RelayCommand(async () => await ToggleRcFailsafe(), () => IsConnected && !IsLoading);
-        ToggleBatteryFailsafeCommand = new RelayCommand(async () => await ToggleBatteryFailsafe(), () => IsConnected && !IsLoading);
-        ToggleGcsFailsafeCommand = new RelayCommand(async () => await ToggleGcsFailsafe(), () => IsConnected && !IsLoading);
-        RefreshCommand = new RelayCommand(async () => await RefreshFailsafeParams(), () => IsConnected && !IsLoading);
+        ToggleRcFailsafeCommand = new AsyncRelayCommand(ToggleRcFailsafe, () => IsConnected && !IsLoading);
+        ToggleBatteryFailsafeCommand = new AsyncRelayCommand(ToggleBatteryFailsafe, () => IsConnected && !IsLoading);
+        ToggleGcsFailsafeCommand = new AsyncRelayCommand(ToggleGcsFailsafe, () => IsConnected && !IsLoading);
+        RefreshCommand = new AsyncRelayCommand(RefreshFailsafeParams, () => IsConnected && !IsLoading);
     }
 
     #region Parameter Handling
@@ -172,7 +172,6 @@ public class FailsafeViewModel : ViewModelBase
 
             switch (paramId.ToUpperInvariant())
             {
-                // ArduPlane throttle failsafe
                 case "FS_THR_ENABLE":
                 case "THR_FAILSAFE":
                     RcFailsafeEnabled = value > 0;
@@ -182,7 +181,6 @@ public class FailsafeViewModel : ViewModelBase
                     RcFailsafeThreshold = value;
                     break;
 
-                // Battery failsafe
                 case "FS_BATT_ENABLE":
                 case "BATT_FS_LOW_ACT":
                     BatteryFailsafeEnabled = value > 0;
@@ -192,16 +190,14 @@ public class FailsafeViewModel : ViewModelBase
                     BatteryFailsafeVoltage = value;
                     break;
 
-                // GCS failsafe
                 case "FS_GCS_ENABLE":
-                case "FS_GCS_ENABL": // Some versions truncate
+                case "FS_GCS_ENABL":
                     GcsFailsafeEnabled = value > 0;
                     break;
                 case "FS_GCS_TIMEOUT":
                     GcsFailsafeTimeout = value;
                     break;
 
-                // GPS failsafe (usually always enabled)
                 case "FS_EKF_ACTION":
                 case "GPS_TYPE":
                     GpsFailsafeEnabled = value > 0;
@@ -214,17 +210,13 @@ public class FailsafeViewModel : ViewModelBase
 
     public void OnSysStatusReceived(uint onboardControlSensorsHealth, uint onboardControlSensorsEnabled)
     {
-        // MAV_SYS_STATUS_SENSOR flags
         const uint GPS = 0x04;
         const uint RC_RECEIVER = 0x10000;
-        const uint BATTERY = 0x400000;
 
         Application.Current?.Dispatcher?.BeginInvoke(() =>
         {
-            // Check if sensors are healthy
             GpsFailsafeTriggered = (onboardControlSensorsEnabled & GPS) != 0 && (onboardControlSensorsHealth & GPS) == 0;
             RcFailsafeTriggered = (onboardControlSensorsEnabled & RC_RECEIVER) != 0 && (onboardControlSensorsHealth & RC_RECEIVER) == 0;
-            // Battery is usually reported via separate message
         });
     }
 
@@ -237,7 +229,6 @@ public class FailsafeViewModel : ViewModelBase
 
         try
         {
-            // Request all failsafe-related parameters
             var paramsToRequest = new[]
             {
                 "FS_THR_ENABLE", "FS_THR_VALUE",
@@ -249,7 +240,7 @@ public class FailsafeViewModel : ViewModelBase
             foreach (var param in paramsToRequest)
             {
                 await _requestParamFunc(param);
-                await Task.Delay(50); // Small delay between requests
+                await Task.Delay(50);
             }
 
             StatusMessage = "Parameters loaded";
@@ -347,7 +338,6 @@ public class FailsafeViewModel : ViewModelBase
         else
         {
             StatusMessage = "Not connected";
-            // Reset triggered states
             RcFailsafeTriggered = false;
             BatteryFailsafeTriggered = false;
             GcsFailsafeTriggered = false;

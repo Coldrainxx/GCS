@@ -1,15 +1,12 @@
 ﻿using MavLinkSharp;
 using System;
-using System.Buffers.Binary;
+using System.Collections.Generic;
 
 namespace GCS.Core.Mavlink;
 
 /// <summary>
-/// Builds outgoing MAVLink v2 packets using MavLinkSharp's own Metadata
-/// (field ordering, payload length, CrcExtra) and Crc utilities.
-/// 
-/// No hardcoded seeds or manual CRC â€” everything is driven by the same
-/// dialect XML that the parser uses, so TX and RX are guaranteed in sync.
+/// Builds outgoing MAVLink v2 packets using MavLinkSharp's Frame API.
+/// All serialization, field ordering, and CRC are handled by the library.
 /// </summary>
 public static class Mavlink2Serializer
 {
@@ -17,65 +14,32 @@ public static class Mavlink2Serializer
 
     /// <summary>
     /// Generic serializer: looks up the message definition from Metadata,
-    /// writes fields in wire order, computes the correct CRC, returns the
-    /// complete v2 packet ready to hand to ITransport.SendAsync().
+    /// uses Frame.SetFields() + Frame.ToBytes() for correct serialization.
     /// </summary>
-    /// <param name="messageId">MAVLink message ID (e.g. 76 = COMMAND_LONG).</param>
-    /// <param name="sysId">Sender system ID (GCS).</param>
-    /// <param name="compId">Sender component ID (GCS).</param>
-    /// <param name="fieldValues">Field name â†’ value, keyed exactly as the XML defines them.</param>
     public static ReadOnlyMemory<byte> Build(
         uint messageId,
         byte sysId,
         byte compId,
         Dictionary<string, object> fieldValues)
     {
-        var msg = Metadata.Messages[messageId];   // throws if not loaded â€” fast fail
+        var msg = Metadata.Messages[messageId];
 
-        // 1) serialise payload in OrderedFields wire order (same logic the parser uses)
-        byte[] payload = new byte[msg.PayloadLength];
-        var span = payload.AsSpan();
-
-        foreach (var field in msg.OrderedFields)
+        var frame = new Frame
         {
-            if (fieldValues.TryGetValue(field.Name, out var value))
-                WriteField(ref span, field, value);
-            else
-                span = span.Slice(field.Length);   // leave zeroed
-        }
+            StartMarker = Protocol.V2.StartMarker,
+            SystemId = sysId,
+            ComponentId = compId,
+            MessageId = messageId,
+            Message = msg,
+            PacketSequence = unchecked(_seq++)
+        };
 
-        // 2) build the raw packet using the same layout as CreatePacketRaw in the lib's own tests
-        unchecked { _seq++; }
+        frame.SetFields(fieldValues);
 
-        int totalLen = Protocol.V2.HeaderLength + payload.Length + Protocol.V2.ChecksumLength;
-        byte[] packet = new byte[totalLen];
-        int i = 0;
-
-        packet[i++] = Protocol.V2.StartMarker;          // 0xFD
-        packet[i++] = (byte)payload.Length;
-        packet[i++] = 0;                                 // incompat flags
-        packet[i++] = 0;                                 // compat flags
-        packet[i++] = _seq;
-        packet[i++] = sysId;
-        packet[i++] = compId;
-        packet[i++] = (byte)(messageId & 0xFF);  // msg id [0]
-        packet[i++] = (byte)((messageId >> 8) & 0xFF); // msg id [1]
-        packet[i++] = (byte)((messageId >> 16) & 0xFF); // msg id [2]
-
-        Array.Copy(payload, 0, packet, Protocol.V2.HeaderLength, payload.Length);
-
-        // 3) CRC over everything after STX (header bytes 1..9 + payload), then accumulate CrcExtra
-        //    â€” identical to what TryParseV2 validates against
-        var crcSpan = packet.AsSpan(1, Protocol.V2.HeaderLength - 1 + payload.Length);
-        ushort crc = Crc.Calculate(crcSpan);
-        crc = Crc.Accumulate(msg.CrcExtra, crc);
-
-        BinaryPrimitives.WriteUInt16LittleEndian(packet.AsSpan(totalLen - 2), crc);
-
-        return packet;
+        return frame.ToBytes();
     }
 
-    // â”€â”€ convenience wrappers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // ── convenience wrappers ────────────────────────────────────────
 
     /// <summary>COMMAND_LONG (76)</summary>
     public static ReadOnlyMemory<byte> CommandLong(
@@ -115,40 +79,43 @@ public static class Mavlink2Serializer
         });
     }
 
-    // â”€â”€ field writer (mirrors Field.GetValue / the test helper WriteValue) â”€â”€
-
-    private static void WriteField(ref Span<byte> span, Field field, object value)
+    /// <summary>PARAM_SET (23)</summary>
+    public static ReadOnlyMemory<byte> ParamSet(
+        byte targetSys, byte targetComp,
+        byte senderSys, byte senderComp,
+        string paramId, float value, byte paramType = 9) // 9 = MAV_PARAM_TYPE_REAL32
     {
-        if (field.DataType.IsArray)
+        // param_id is a char[16] field — pass as char array
+        var paramChars = new char[16];
+        for (int i = 0; i < Math.Min(paramId.Length, 16); i++)
+            paramChars[i] = paramId[i];
+
+        return Build(23, senderSys, senderComp, new()
         {
-            // array fields: write element-by-element
-            var arr = (Array)value;
-            var elemType = field.ElementType;
-            for (int idx = 0; idx < field.ArrayLength; idx++)
-            {
-                object elem = idx < arr.Length ? arr.GetValue(idx)! : 0;
-                WritePrimitive(ref span, elemType, elem);
-            }
-        }
-        else
-        {
-            WritePrimitive(ref span, field.DataType, value);
-        }
+            ["target_system"] = targetSys,
+            ["target_component"] = targetComp,
+            ["param_id"] = paramChars,
+            ["param_value"] = value,
+            ["param_type"] = paramType,
+        });
     }
 
-    private static void WritePrimitive(ref Span<byte> span, Type type, object value)
+    /// <summary>PARAM_REQUEST_READ (20)</summary>
+    public static ReadOnlyMemory<byte> ParamRequestRead(
+        byte targetSys, byte targetComp,
+        byte senderSys, byte senderComp,
+        string paramId)
     {
-        if (type == typeof(char)) { span[0] = (byte)(char)value; span = span.Slice(1); }
-        else if (type == typeof(sbyte)) { span[0] = (byte)(sbyte)Convert.ToSByte(value); span = span.Slice(1); }
-        else if (type == typeof(byte)) { span[0] = Convert.ToByte(value); span = span.Slice(1); }
-        else if (type == typeof(short)) { BinaryPrimitives.WriteInt16LittleEndian(span, Convert.ToInt16(value)); span = span.Slice(2); }
-        else if (type == typeof(ushort)) { BinaryPrimitives.WriteUInt16LittleEndian(span, Convert.ToUInt16(value)); span = span.Slice(2); }
-        else if (type == typeof(int)) { BinaryPrimitives.WriteInt32LittleEndian(span, Convert.ToInt32(value)); span = span.Slice(4); }
-        else if (type == typeof(uint)) { BinaryPrimitives.WriteUInt32LittleEndian(span, Convert.ToUInt32(value)); span = span.Slice(4); }
-        else if (type == typeof(float)) { BinaryPrimitives.WriteInt32LittleEndian(span, BitConverter.SingleToInt32Bits(Convert.ToSingle(value))); span = span.Slice(4); }
-        else if (type == typeof(long)) { BinaryPrimitives.WriteInt64LittleEndian(span, Convert.ToInt64(value)); span = span.Slice(8); }
-        else if (type == typeof(ulong)) { BinaryPrimitives.WriteUInt64LittleEndian(span, Convert.ToUInt64(value)); span = span.Slice(8); }
-        else if (type == typeof(double)) { BinaryPrimitives.WriteInt64LittleEndian(span, BitConverter.DoubleToInt64Bits(Convert.ToDouble(value))); span = span.Slice(8); }
-        else throw new InvalidOperationException($"Unsupported MAVLink field type: {type}");
+        var paramChars = new char[16];
+        for (int i = 0; i < Math.Min(paramId.Length, 16); i++)
+            paramChars[i] = paramId[i];
+
+        return Build(20, senderSys, senderComp, new()
+        {
+            ["target_system"] = targetSys,
+            ["target_component"] = targetComp,
+            ["param_id"] = paramChars,
+            ["param_index"] = (short)-1, // named lookup
+        });
     }
 }

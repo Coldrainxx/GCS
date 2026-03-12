@@ -7,11 +7,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="MavLinkSharp" Version="1.2.0" />
+    <PackageReference Include="MavLinkSharp" Version="1.4.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="runtime.maccatalyst-x64.runtime.native.System.IO.Ports" Version="10.0.2" />
-    <PackageReference Include="runtime.native.System.IO.Ports" Version="10.0.2" />
-    <PackageReference Include="System.IO.Ports" Version="10.0.2" />
+    <PackageReference Include="runtime.maccatalyst-x64.runtime.native.System.IO.Ports" Version="10.0.4" />
+    <PackageReference Include="runtime.native.System.IO.Ports" Version="10.0.4" />
+    <PackageReference Include="System.IO.Ports" Version="10.0.4" />
     <PackageReference Include="System.Threading" Version="4.3.0" />
   </ItemGroup>
   <ItemGroup>

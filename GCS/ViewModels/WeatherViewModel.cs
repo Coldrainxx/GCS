@@ -1,3 +1,4 @@
+using CommunityToolkit.Mvvm.Input;
 using GCS.Core.Utils;
 using System;
 using System.Threading.Tasks;
@@ -14,7 +15,7 @@ public class WeatherViewModel : ViewModelBase
     private bool _isLoading;
     private bool _hasData;
     private bool _isPopupOpen;
-    
+
     // Weather data
     private double _temperature;
     private int _humidity;
@@ -120,18 +121,17 @@ public class WeatherViewModel : ViewModelBase
         _country = country;
 
         TogglePopupCommand = new RelayCommand(() => IsPopupOpen = !IsPopupOpen);
-        RefreshCommand = new RelayCommand(async () => await RefreshWeatherAsync());
+        RefreshCommand = new AsyncRelayCommand(RefreshWeatherAsync);
 
-        // Load weather on startup
         _ = RefreshWeatherAsync();
     }
 
     public async Task RefreshWeatherAsync()
     {
         IsLoading = true;
-        
+
         var data = await _weatherService.GetWeatherAsync(_city, _country);
-        
+
         if (data != null)
         {
             Temperature = data.Temperature;

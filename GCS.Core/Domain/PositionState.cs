@@ -3,8 +3,7 @@
 namespace GCS.Core.Domain;
 
 /// <summary>
-/// GPS position from GLOBAL_POSITION_INT (msg 33)
-/// Add this to your Domain folder if missing
+/// GPS position from GLOBAL_POSITION_INT (msg 33).
 /// </summary>
 public record PositionState(
     double LatitudeDeg,
@@ -16,4 +15,4 @@ public record PositionState(
     float VelocityEastMps,
     float VelocityDownMps,
     DateTime TimestampUtc
-);
+) : TimestampedState(TimestampUtc);

@@ -21,10 +21,10 @@
   <ItemGroup>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="HelixToolkit.Wpf" Version="3.1.2" />
-    <PackageReference Include="MavLinkSharp" Version="1.2.0" />
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3719.77" />
+    <PackageReference Include="MavLinkSharp" Version="1.4.0" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3800.47" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageReference Include="System.IO.Ports" Version="10.0.2" />
+    <PackageReference Include="System.IO.Ports" Version="10.0.4" />
   </ItemGroup>
 
   <ItemGroup>

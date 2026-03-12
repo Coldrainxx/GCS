@@ -18,7 +18,7 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
         Battery: null,
         FlightMode: null,
         IsArmed: false,
-         Gps: null  // NEW
+        Gps: null
     );
 
     public VehicleState Current => _current;
@@ -38,7 +38,7 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
         _backend.PositionReceived += OnPosition;
         _backend.VfrHudReceived += OnVfrHud;
         _backend.BatteryReceived += OnBattery;
-        _backend.GpsStateReceived += OnGpsState;  // NEW
+        _backend.GpsStateReceived += OnGpsState;
     }
 
     private void OnConnectionState(ConnectionState state)
@@ -48,7 +48,6 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
 
     private void OnHeartbeat(HeartbeatState hb)
     {
-        // Update FlightMode and IsArmed from heartbeat
         var next = _current;
 
         if (hb.Mode != null)
@@ -80,10 +79,12 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
     {
         Update(_current with { Battery = battery });
     }
-    private void OnGpsState(GpsState gps)  // NEW
+
+    private void OnGpsState(GpsState gps)
     {
         Update(_current with { Gps = gps });
     }
+
     private void Update(VehicleState next)
     {
         if (_context != null)
@@ -109,6 +110,6 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
         _backend.PositionReceived -= OnPosition;
         _backend.VfrHudReceived -= OnVfrHud;
         _backend.BatteryReceived -= OnBattery;
-        _backend.GpsStateReceived -= OnGpsState;  // NEW
+        _backend.GpsStateReceived -= OnGpsState;
     }
 }

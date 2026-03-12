@@ -25,12 +25,15 @@ public interface IWeatherService
 
 public class WeatherService : IWeatherService
 {
-    private readonly HttpClient _client = new();
+    private static readonly HttpClient SharedClient = new();
+
+    private readonly HttpClient _client;
     private readonly string _apiKey;
 
-    public WeatherService(string apiKey)
+    public WeatherService(string apiKey, HttpClient? client = null)
     {
         _apiKey = apiKey;
+        _client = client ?? SharedClient;
     }
 
     public async Task<WeatherData?> GetWeatherAsync(string city, string country)
@@ -47,17 +50,17 @@ public class WeatherService : IWeatherService
             double windSpeed = windSpeedMs * 3.6; // m/s to km/h
             int windDirection = json["wind"]?["deg"]?.Value<int>() ?? 0;
             string description = json["weather"]![0]!["description"]!.Value<string>() ?? "";
-            
-            double visibility = json.ContainsKey("visibility") 
+
+            double visibility = json.ContainsKey("visibility")
                 ? json["visibility"]!.Value<double>() / 1000.0  // meters to km
                 : -1;
-            
+
             double pressure = json["main"]!["pressure"]!.Value<double>();
 
             // Flight suitability check
             bool isGoodForFlight = windSpeed < 15 * 3.6 && // < 15 m/s in km/h
-                                   temperature > -1 && 
-                                   humidity < 90 && 
+                                   temperature > -1 &&
+                                   humidity < 90 &&
                                    visibility > 3;
 
             return new WeatherData
@@ -92,7 +95,7 @@ public class WeatherService : IWeatherService
             >= 203 and < 248 => "SW",
             >= 248 and < 293 => "W",
             >= 293 and < 337 => "NW",
-            
+           
         };
     }
 }

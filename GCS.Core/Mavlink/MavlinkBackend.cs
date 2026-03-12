@@ -5,9 +5,8 @@ using GCS.Core.Mavlink.Dispatch;
 using GCS.Core.Mavlink.Messages;
 using GCS.Core.Transport;
 using MavLinkSharp;
-using MavLinkSharp.Enums;
 using System;
-using System.Text;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -33,7 +32,6 @@ public sealed class MavlinkBackend : IMavlinkBackend
     private Task? _tickTask;
     private TransportState _transportState = TransportState.Disconnected;
     private bool _disposed;
-    private byte _sequence = 0;
 
     // ═══════════════════════════════════════════════════════════════
     // Constants
@@ -42,7 +40,6 @@ public sealed class MavlinkBackend : IMavlinkBackend
     private const byte GcsSysId = 255;
     private const byte GcsCompId = 190; // MAV_COMP_ID_MISSIONPLANNER
     private const ushort MAV_CMD_COMPONENT_ARM_DISARM = 400;
-    private const byte MAV_PARAM_TYPE_REAL32 = 9;
 
     // ═══════════════════════════════════════════════════════════════
     // Events - Telemetry
@@ -198,10 +195,8 @@ public sealed class MavlinkBackend : IMavlinkBackend
     {
         foreach (var frameData in _frameBuffer.AddData(data.Span))
         {
-            if (!Message.TryParse(frameData.Span, out var frame))
-                continue;
-
-            if (frame.ErrorReason != ErrorReason.None)
+            var frame = new Frame();
+            if (!frame.TryParse(frameData.Span))
                 continue;
 
             _dispatcher.Dispatch(frame);
@@ -211,7 +206,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
     private void OnTransportError(Exception ex)
     {
         SetTransportState(TransportState.Error);
-        System.Diagnostics.Debug.WriteLine($"[MavlinkBackend] Transport error: {ex.Message}");
+        Debug.WriteLine($"[MavlinkBackend] Transport error: {ex.Message}");
     }
 
     private void OnConnectionChanged(MavlinkConnectionState state)
@@ -302,101 +297,41 @@ public sealed class MavlinkBackend : IMavlinkBackend
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // TX - Parameters
+    // TX - Parameters (now using Mavlink2Serializer)
     // ═══════════════════════════════════════════════════════════════
 
     public async Task SetParameterAsync(string paramId, float value, CancellationToken ct = default)
     {
         EnsureConnected();
 
-        // PARAM_SET (ID 23): target_sys(1) + target_comp(1) + param_id(16) + param_value(4) + param_type(1) = 23 bytes
-        var payload = new byte[23];
-        payload[0] = _connection.SystemId;
-        payload[1] = _connection.ComponentId;
+        var packet = Mavlink2Serializer.ParamSet(
+            targetSys: _connection.SystemId,
+            targetComp: _connection.ComponentId,
+            senderSys: GcsSysId,
+            senderComp: GcsCompId,
+            paramId: paramId,
+            value: value);
 
-        var paramBytes = Encoding.ASCII.GetBytes(paramId);
-        Array.Copy(paramBytes, 0, payload, 2, Math.Min(paramBytes.Length, 16));
-
-        BitConverter.GetBytes(value).CopyTo(payload, 18);
-        payload[22] = MAV_PARAM_TYPE_REAL32;
-
-        var packet = BuildMavlink2Packet(23, payload);
         await _transport.SendAsync(packet, ct);
 
-        System.Diagnostics.Debug.WriteLine($"[MavlinkBackend] SetParameter: {paramId} = {value}");
+        Debug.WriteLine($"[MavlinkBackend] SetParameter: {paramId} = {value}");
     }
 
     public async Task RequestParameterAsync(string paramId, CancellationToken ct = default)
     {
         EnsureConnected();
 
-        // PARAM_REQUEST_READ (ID 20): target_sys(1) + target_comp(1) + param_id(16) + param_index(2) = 20 bytes
-        var payload = new byte[20];
-        payload[0] = _connection.SystemId;
-        payload[1] = _connection.ComponentId;
+        var packet = Mavlink2Serializer.ParamRequestRead(
+            targetSys: _connection.SystemId,
+            targetComp: _connection.ComponentId,
+            senderSys: GcsSysId,
+            senderComp: GcsCompId,
+            paramId: paramId);
 
-        var paramBytes = Encoding.ASCII.GetBytes(paramId);
-        Array.Copy(paramBytes, 0, payload, 2, Math.Min(paramBytes.Length, 16));
-
-        BitConverter.GetBytes((short)-1).CopyTo(payload, 18); // -1 = named lookup
-
-        var packet = BuildMavlink2Packet(20, payload);
         await _transport.SendAsync(packet, ct);
 
-        System.Diagnostics.Debug.WriteLine($"[MavlinkBackend] RequestParameter: {paramId}");
+        Debug.WriteLine($"[MavlinkBackend] RequestParameter: {paramId}");
     }
-
-    private byte[] BuildMavlink2Packet(uint msgId, byte[] payload)
-    {
-        // MAVLink 2: STX(1) + LEN(1) + INCOMPAT(1) + COMPAT(1) + SEQ(1) + SYSID(1) + COMPID(1) + MSGID(3) + payload + CRC(2)
-        var packet = new byte[10 + payload.Length + 2];
-
-        packet[0] = 0xFD;                           // STX (MAVLink 2)
-        packet[1] = (byte)payload.Length;           // Payload length
-        packet[2] = 0;                              // Incompatibility flags
-        packet[3] = 0;                              // Compatibility flags
-        packet[4] = _sequence++;                    // Sequence
-        packet[5] = GcsSysId;                       // System ID
-        packet[6] = GcsCompId;                      // Component ID
-        packet[7] = (byte)(msgId & 0xFF);           // Message ID (low)
-        packet[8] = (byte)((msgId >> 8) & 0xFF);    // Message ID (mid)
-        packet[9] = (byte)((msgId >> 16) & 0xFF);   // Message ID (high)
-
-        Array.Copy(payload, 0, packet, 10, payload.Length);
-
-        ushort crc = CalculateCrc(packet, 1, 9 + payload.Length, GetCrcExtra(msgId));
-        packet[10 + payload.Length] = (byte)(crc & 0xFF);
-        packet[11 + payload.Length] = (byte)(crc >> 8);
-
-        return packet;
-    }
-
-    private static ushort CalculateCrc(byte[] buffer, int start, int length, byte crcExtra)
-    {
-        ushort crc = 0xFFFF;
-
-        for (int i = start; i < start + length; i++)
-        {
-            byte tmp = (byte)(buffer[i] ^ (crc & 0xFF));
-            tmp ^= (byte)(tmp << 4);
-            crc = (ushort)((crc >> 8) ^ (tmp << 8) ^ (tmp << 3) ^ (tmp >> 4));
-        }
-
-        // Add CRC extra
-        byte tmp2 = (byte)(crcExtra ^ (crc & 0xFF));
-        tmp2 ^= (byte)(tmp2 << 4);
-        crc = (ushort)((crc >> 8) ^ (tmp2 << 8) ^ (tmp2 << 3) ^ (tmp2 >> 4));
-
-        return crc;
-    }
-
-    private static byte GetCrcExtra(uint msgId) => msgId switch
-    {
-        20 => 214,  // PARAM_REQUEST_READ
-        22 => 220,  // PARAM_VALUE
-        23 => 168,  // PARAM_SET
-        _ => 0
-    };
 
     // ═══════════════════════════════════════════════════════════════
     // TX - With Acknowledgement

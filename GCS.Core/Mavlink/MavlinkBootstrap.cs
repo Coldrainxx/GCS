@@ -1,4 +1,5 @@
 ﻿using MavLinkSharp;
+using MavLinkSharp.Enums;
 
 namespace GCS.Core.Mavlink;
 
@@ -6,9 +7,7 @@ public static class MavlinkBootstrap
 {
     public static void Init()
     {
-        MavLink.Initialize("common.xml");
-
-        MavLink.IncludeMessages(new uint[]
+        MavLink.Initialize(DialectType.Common, new uint[]
         {
             0,   // HEARTBEAT
             1,   // SYS_STATUS
@@ -20,6 +19,7 @@ public static class MavlinkBootstrap
             22,  // PARAM_VALUE
             23,  // PARAM_SET
             
+            24,  // GPS_RAW_INT
             30,  // ATTITUDE
             33,  // GLOBAL_POSITION_INT
             

@@ -1,9 +1,9 @@
+using CommunityToolkit.Mvvm.Input;
 using GCS.Core.Domain;
 using GCS.Core.Mission;
 using Microsoft.Win32;
 using System;
 using System.Collections.ObjectModel;
-using System.Collections.Specialized;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -116,11 +116,10 @@ public class MissionViewModel : ViewModelBase
 
     public MissionViewModel()
     {
-        // Upload now works even with 0 waypoints (sends empty mission to clear FC)
-        UploadCommand = new RelayCommand(async () => await UploadAsync(), () => IsConnected && !IsBusy);
-        DownloadCommand = new RelayCommand(async () => await DownloadAsync(), () => IsConnected && !IsBusy);
+        UploadCommand = new AsyncRelayCommand(UploadAsync, () => IsConnected && !IsBusy);
+        DownloadCommand = new AsyncRelayCommand(DownloadAsync, () => IsConnected && !IsBusy);
         ClearCommand = new RelayCommand(ClearAll, () => Waypoints.Count > 0 && !IsBusy);
-        ClearOnFCCommand = new RelayCommand(async () => await ClearOnFCAsync(), () => IsConnected && !IsBusy);
+        ClearOnFCCommand = new AsyncRelayCommand(ClearOnFCAsync, () => IsConnected && !IsBusy);
         RemoveSelectedCommand = new RelayCommand(RemoveSelected, () => SelectedIndex >= 0 && !IsBusy);
         InsertBeforeCommand = new RelayCommand(InsertBefore, () => SelectedIndex >= 0 && !IsBusy);
         InsertAfterCommand = new RelayCommand(InsertAfter, () => SelectedIndex >= 0 && !IsBusy);

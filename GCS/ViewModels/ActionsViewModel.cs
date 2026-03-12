@@ -43,10 +43,8 @@ public class ActionsViewModel : ViewModelBase
         get => _isConnected;
         set
         {
-
             if (SetProperty(ref _isConnected, value))
             {
-                // Force UI to re-evaluate CanExecute for all commands
                 System.Windows.Application.Current?.Dispatcher?.Invoke(() =>
                 {
                     CommandManager.InvalidateRequerySuggested();
@@ -104,32 +102,28 @@ public class ActionsViewModel : ViewModelBase
     public ICommand QRtlCommand { get; }
     public ICommand SetModeCommand { get; }
 
-    private const ushort MAV_CMD_COMPONENT_ARM_DISARM = 400;
-
     public ActionsViewModel(IMavlinkBackend backend)
     {
         _backend = backend;
 
         InitializeModes();
 
-        // Use simpler RelayCommand that checks IsConnected directly
-        ArmCommand = new RelayCommand(async () => await ArmAsync(), CanExecuteConnected);
-        DisarmCommand = new RelayCommand(async () => await DisarmAsync(), CanExecuteConnected);
+        ArmCommand = new AsyncRelayCommand(ArmAsync, CanExecuteConnected);
+        DisarmCommand = new AsyncRelayCommand(DisarmAsync, CanExecuteConnected);
 
-        RtlCommand = new RelayCommand(async () => await SetModeAsync(FlightModeEnum.Rtl), CanExecuteConnected);
-        LoiterCommand = new RelayCommand(async () => await SetModeAsync(FlightModeEnum.Loiter), CanExecuteConnected);
-        AutoCommand = new RelayCommand(async () => await SetModeAsync(FlightModeEnum.Auto), CanExecuteConnected);
-        GuidedCommand = new RelayCommand(async () => await SetModeAsync(FlightModeEnum.Guided), CanExecuteConnected);
-        CruiseCommand = new RelayCommand(async () => await SetModeAsync(FlightModeEnum.Cruise), CanExecuteConnected);
+        RtlCommand = new AsyncRelayCommand(() => SetModeAsync(FlightModeEnum.Rtl), CanExecuteConnected);
+        LoiterCommand = new AsyncRelayCommand(() => SetModeAsync(FlightModeEnum.Loiter), CanExecuteConnected);
+        AutoCommand = new AsyncRelayCommand(() => SetModeAsync(FlightModeEnum.Auto), CanExecuteConnected);
+        GuidedCommand = new AsyncRelayCommand(() => SetModeAsync(FlightModeEnum.Guided), CanExecuteConnected);
+        CruiseCommand = new AsyncRelayCommand(() => SetModeAsync(FlightModeEnum.Cruise), CanExecuteConnected);
 
-        QHoverCommand = new RelayCommand(async () => await SetModeAsync(FlightModeEnum.QHover), CanExecuteConnected);
-        QLoiterCommand = new RelayCommand(async () => await SetModeAsync(FlightModeEnum.QLoiter), CanExecuteConnected);
-        QLandCommand = new RelayCommand(async () => await SetModeAsync(FlightModeEnum.QLand), CanExecuteConnected);
-        QRtlCommand = new RelayCommand(async () => await SetModeAsync(FlightModeEnum.QRtl), CanExecuteConnected);
+        QHoverCommand = new AsyncRelayCommand(() => SetModeAsync(FlightModeEnum.QHover), CanExecuteConnected);
+        QLoiterCommand = new AsyncRelayCommand(() => SetModeAsync(FlightModeEnum.QLoiter), CanExecuteConnected);
+        QLandCommand = new AsyncRelayCommand(() => SetModeAsync(FlightModeEnum.QLand), CanExecuteConnected);
+        QRtlCommand = new AsyncRelayCommand(() => SetModeAsync(FlightModeEnum.QRtl), CanExecuteConnected);
 
-        SetModeCommand = new RelayCommand(async () => await SetSelectedModeAsync(), () => IsConnected && SelectedModeIndex >= 0);
+        SetModeCommand = new AsyncRelayCommand(SetSelectedModeAsync, () => IsConnected && SelectedModeIndex >= 0);
 
-        // Subscribe to backend connection state directly
         _backend.ConnectionStateChanged += OnConnectionStateChanged;
 
         Debug.WriteLine("[ActionsViewModel] Created and subscribed to ConnectionStateChanged");
@@ -139,7 +133,6 @@ public class ActionsViewModel : ViewModelBase
 
     private void OnConnectionStateChanged(ConnectionState state)
     {
-
         IsConnected = state.IsConnected;
     }
 
@@ -231,14 +224,11 @@ public class ActionsViewModel : ViewModelBase
 
     public void UpdateFromVehicleState(VehicleState state)
     {
-
-
         if (state.FlightMode.HasValue)
         {
             FlightMode = state.FlightMode.Value.ToString().ToUpper();
         }
 
-        // Update IsConnected from state
         if (state.Connection != null)
         {
             IsConnected = state.Connection.IsConnected;

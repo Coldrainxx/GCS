@@ -1,4 +1,5 @@
-﻿using GCS.Core.Alerts;
+﻿using GCS.Core;
+using GCS.Core.Alerts;
 using GCS.Core.Domain;
 using GCS.Core.Health;
 using GCS.Core.Mavlink;
@@ -10,6 +11,7 @@ using GCS.Core.State;
 using GCS.Core.Transport;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -32,6 +34,12 @@ public class MainViewModel : ViewModelBase, IDisposable
     private CancellationTokenSource? _cts;
     private bool _disposed;
 
+    // Store mission event handlers so we can unsubscribe
+    private Action<ushort>? _onMissionCount;
+    private Action<MissionItem>? _onMissionItem;
+    private Action<ushort>? _onMissionRequest;
+    private Action<byte>? _onMissionAck;
+
     // ═══════════════════════════════════════════════════════════════
     // Child ViewModels
     // ═══════════════════════════════════════════════════════════════
@@ -46,12 +54,15 @@ public class MainViewModel : ViewModelBase, IDisposable
     public MissionViewModel Mission { get; } = new();
     public WeatherViewModel Weather { get; }
     public FailsafeViewModel Failsafe { get; }
+
     // ═══════════════════════════════════════════════════════════════
     // Constructor
     // ═══════════════════════════════════════════════════════════════
 
     public MainViewModel()
     {
+        var config = AppConfig.Load();
+
         Connection = new ConnectionViewModel();
         Telemetry = new TelemetryViewModel();
         Alerts = new AlertsViewModel();
@@ -59,7 +70,7 @@ public class MainViewModel : ViewModelBase, IDisposable
         Messages = new MessagesViewModel();
         RcChannels = new RcChannelsViewModel();
 
-        Weather = new WeatherViewModel("4970995a0d51b7f11323001c6a860264", "Baku", "AZ");
+        Weather = new WeatherViewModel(config.WeatherApiKey, config.WeatherCity, config.WeatherCountry);
 
         Failsafe = new FailsafeViewModel(
             setParamFunc: async (name, value) =>
@@ -73,7 +84,7 @@ public class MainViewModel : ViewModelBase, IDisposable
                     await _backend.RequestParameterAsync(name);
             }
         );
-        // Wire up connection events
+
         Connection.ConnectRequested += OnConnectRequested;
         Connection.DisconnectRequested += OnDisconnectRequested;
     }
@@ -97,9 +108,8 @@ public class MainViewModel : ViewModelBase, IDisposable
             _backend.TransportStateChanged += OnTransportStateChanged;
             _backend.AutopilotMessageReceived += OnAutopilotMessage;
             _backend.RcChannelsReceived += OnRcChannelsReceived;
-
-
             _backend.ParameterReceived += OnParameterReceived;
+
             // 3. Create Actions ViewModel
             Actions = new ActionsViewModel(_backend);
             OnPropertyChanged(nameof(Actions));
@@ -112,15 +122,28 @@ public class MainViewModel : ViewModelBase, IDisposable
             _missionService = new MissionService(sender, _backend);
             Mission.SetMissionService(_missionService);
 
-            // Wire mission events
-            _backend.MissionCountReceived += async (count) =>
-                await _missionService.OnMissionCount(count, CancellationToken.None);
-            _backend.MissionItemReceived += async (item) =>
-                await _missionService.OnMissionItem(item, CancellationToken.None);
-            _backend.MissionRequestReceived += async (seq) =>
-                await _missionService.OnMissionRequest(seq, CancellationToken.None);
-            _backend.MissionAckReceived += (result) =>
-                _missionService.OnMissionAck(result);
+            // Wire mission events (keep references for cleanup)
+            _onMissionCount = async (count) =>
+            {
+                try { await _missionService.OnMissionCount(count, CancellationToken.None); }
+                catch (Exception ex) { Debug.WriteLine($"[MainVM] MissionCount error: {ex.Message}"); }
+            };
+            _onMissionItem = async (item) =>
+            {
+                try { await _missionService.OnMissionItem(item, CancellationToken.None); }
+                catch (Exception ex) { Debug.WriteLine($"[MainVM] MissionItem error: {ex.Message}"); }
+            };
+            _onMissionRequest = async (seq) =>
+            {
+                try { await _missionService.OnMissionRequest(seq, CancellationToken.None); }
+                catch (Exception ex) { Debug.WriteLine($"[MainVM] MissionRequest error: {ex.Message}"); }
+            };
+            _onMissionAck = (result) => _missionService.OnMissionAck(result);
+
+            _backend.MissionCountReceived += _onMissionCount;
+            _backend.MissionItemReceived += _onMissionItem;
+            _backend.MissionRequestReceived += _onMissionRequest;
+            _backend.MissionAckReceived += _onMissionAck;
 
             // 6. Create state store (aggregates all telemetry)
             _stateStore = new VehicleStateStore(_backend, syncContext);
@@ -153,7 +176,6 @@ public class MainViewModel : ViewModelBase, IDisposable
                 _stateStore, _healthMonitor, preflightPolicy, syncContext);
             _preflightEngine.PreflightChanged += OnPreflightChanged;
 
-
             // 10. Start backend
             _cts = new CancellationTokenSource();
             await _backend.StartAsync(_cts.Token);
@@ -171,17 +193,26 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     private async void OnDisconnectRequested()
     {
-        await CleanupAsync();
+        try
+        {
+            await CleanupAsync();
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[MainVM] Disconnect error: {ex.Message}");
+        }
         Connection.SetDisconnected();
     }
 
     // ═══════════════════════════════════════════════════════════════
     // Event Handlers
     // ═══════════════════════════════════════════════════════════════
+
     private void OnParameterReceived(string paramId, float value)
     {
         Failsafe.OnParameterReceived(paramId, value);
     }
+
     private void OnTransportStateChanged(TransportState state)
     {
         switch (state)
@@ -203,16 +234,13 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     private void OnVehicleStateChanged(VehicleState state)
     {
-        // Update telemetry (already on UI thread via SynchronizationContext)
         Telemetry.UpdateState(state);
         Actions?.UpdateFromVehicleState(state);
 
-        // Update connection state for commands
         bool isConnected = state.FlightMode.HasValue || state.Position != null || state.Attitude != null;
         Preflight.UpdateConnectionState(isConnected);
         Mission.UpdateConnectionState(isConnected);
 
-        // Update connection status message when we get first heartbeat
         if (state.Connection?.IsConnected == true && Connection.IsConnected)
         {
             Connection.StatusMessage = $"Connected - SysID: {state.Connection.SystemId}";
@@ -250,7 +278,6 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     private async Task CleanupAsync()
     {
-        // Unsubscribe from events first
         if (_preflightEngine != null)
         {
             _preflightEngine.PreflightChanged -= OnPreflightChanged;
@@ -285,6 +312,17 @@ public class MainViewModel : ViewModelBase, IDisposable
             _backend.AutopilotMessageReceived -= OnAutopilotMessage;
             _backend.RcChannelsReceived -= OnRcChannelsReceived;
             _backend.ParameterReceived -= OnParameterReceived;
+
+            // Unsubscribe mission events (previously leaked)
+            if (_onMissionCount != null) _backend.MissionCountReceived -= _onMissionCount;
+            if (_onMissionItem != null) _backend.MissionItemReceived -= _onMissionItem;
+            if (_onMissionRequest != null) _backend.MissionRequestReceived -= _onMissionRequest;
+            if (_onMissionAck != null) _backend.MissionAckReceived -= _onMissionAck;
+            _onMissionCount = null;
+            _onMissionItem = null;
+            _onMissionRequest = null;
+            _onMissionAck = null;
+
             if (_cts != null)
             {
                 _cts.Cancel();
@@ -312,7 +350,7 @@ public class MainViewModel : ViewModelBase, IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        // Synchronous cleanup - prefer ShutdownAsync when possible
+        // Synchronous cleanup — prefer ShutdownAsync from Window.OnClosing
         CleanupAsync().GetAwaiter().GetResult();
 
         GC.SuppressFinalize(this);
