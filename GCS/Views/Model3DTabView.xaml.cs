@@ -2,7 +2,6 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Reflection;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -13,7 +12,6 @@ namespace GCS.Views;
 
 public partial class Model3DTabView : UserControl
 {
-    // Just use filename - we'll search for it
     private const string DefaultStlFilename = "WCR.master_1.stl";
     private const double ModelScale = 0.01;
     private const double InitialYawOffset = 0.0;
@@ -81,6 +79,13 @@ public partial class Model3DTabView : UserControl
             view._targetPitch = view.Pitch;
             view._targetYaw = view.Yaw;
             view._needsUpdate = true;
+
+            // If the timer is stopped (tab not visible), apply immediately
+            // so the model is correct when the tab becomes visible again
+            if (!view._updateTimer.IsEnabled && view._modelLoaded)
+            {
+                view.UpdateModelRotation();
+            }
         }
     }
 
@@ -118,8 +123,19 @@ public partial class Model3DTabView : UserControl
 
     private void OnVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (e.NewValue is true && IsLoaded) _updateTimer.Start();
-        else _updateTimer.Stop();
+        if (e.NewValue is true && IsLoaded)
+        {
+            // Force an immediate update when becoming visible,
+            // so the model shows the latest attitude even if
+            // values didn't change while the tab was hidden.
+            _needsUpdate = true;
+            UpdateModelRotation();
+            _updateTimer.Start();
+        }
+        else
+        {
+            _updateTimer.Stop();
+        }
     }
 
     private void OnUpdateTimerTick(object? sender, EventArgs e)
@@ -168,38 +184,21 @@ public partial class Model3DTabView : UserControl
         }
     }
 
-    /// <summary>
-    /// Searches for the STL file in multiple locations
-    /// </summary>
     private string? FindStlFile(string filename)
     {
-        // If it's already a full path and exists, use it
         if (Path.IsPathRooted(filename) && File.Exists(filename))
             return filename;
 
-        // Get just the filename if a path was provided
         string justFilename = Path.GetFileName(filename);
-
-        // Get base directories to search
         string exeDir = AppDomain.CurrentDomain.BaseDirectory;
         string? projectDir = GetProjectDirectory();
 
-        // List of paths to try
         var searchPaths = new[]
         {
-            // Direct path as provided
             Path.Combine(exeDir, filename),
-            
-            // In Models folder (output directory)
             Path.Combine(exeDir, "Models", justFilename),
-            
-            // In Assets folder (output directory)
             Path.Combine(exeDir, "Assets", justFilename),
-            
-            // Just filename in exe directory
             Path.Combine(exeDir, justFilename),
-            
-            // Project directory paths (for debugging)
             projectDir != null ? Path.Combine(projectDir, "Models", justFilename) : null,
             projectDir != null ? Path.Combine(projectDir, "Assets", justFilename) : null,
             projectDir != null ? Path.Combine(projectDir, justFilename) : null,
@@ -218,21 +217,16 @@ public partial class Model3DTabView : UserControl
         return null;
     }
 
-    /// <summary>
-    /// Try to find the project directory (for development)
-    /// </summary>
     private string? GetProjectDirectory()
     {
         try
         {
-            // Go up from bin\Debug\net8.0-windows to project root
             string? dir = AppDomain.CurrentDomain.BaseDirectory;
             for (int i = 0; i < 4 && dir != null; i++)
             {
                 dir = Directory.GetParent(dir)?.FullName;
             }
 
-            // Check if it looks like a project directory
             if (dir != null && (File.Exists(Path.Combine(dir, "GCS.csproj")) ||
                                Directory.Exists(Path.Combine(dir, "Models"))))
             {
@@ -296,30 +290,25 @@ public partial class Model3DTabView : UserControl
         var noseMaterial = new DiffuseMaterial(new SolidColorBrush(Color.FromRgb(255, 100, 50)));
         noseMaterial.Freeze();
 
-        // Fuselage
         var fuselage = new GeometryModel3D(CreateBoxMesh(0.08, 0.5, 0.06), bodyMaterial);
         fuselage.BackMaterial = bodyMaterial;
         model.Children.Add(fuselage);
 
-        // Wing
         var wing = new GeometryModel3D(CreateBoxMesh(0.8, 0.1, 0.015), wingMaterial);
         wing.BackMaterial = wingMaterial;
         wing.Transform = new TranslateTransform3D(0, -0.05, 0.01);
         model.Children.Add(wing);
 
-        // Tail Vertical
         var tailVert = new GeometryModel3D(CreateBoxMesh(0.015, 0.08, 0.12), wingMaterial);
         tailVert.BackMaterial = wingMaterial;
         tailVert.Transform = new TranslateTransform3D(0, -0.22, 0.06);
         model.Children.Add(tailVert);
 
-        // Tail Horizontal
         var tailHoriz = new GeometryModel3D(CreateBoxMesh(0.25, 0.05, 0.01), wingMaterial);
         tailHoriz.BackMaterial = wingMaterial;
         tailHoriz.Transform = new TranslateTransform3D(0, -0.22, 0.1);
         model.Children.Add(tailHoriz);
 
-        // Nose
         var nose = new GeometryModel3D(CreatePyramidMesh(0.12, 0.04), noseMaterial);
         nose.BackMaterial = noseMaterial;
         var noseTransform = new Transform3DGroup();

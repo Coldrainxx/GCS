@@ -9,7 +9,7 @@ namespace GCS.Views;
 public partial class ArtificialHorizon : UserControl
 {
     // =====================================================
-    // Dependency properties
+    // Dependency properties (with change callbacks)
     // =====================================================
 
     public static readonly DependencyProperty RollProperty =
@@ -17,14 +17,14 @@ public partial class ArtificialHorizon : UserControl
             nameof(Roll),
             typeof(double),
             typeof(ArtificialHorizon),
-            new PropertyMetadata(0.0));
+            new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
 
     public static readonly DependencyProperty PitchProperty =
         DependencyProperty.Register(
             nameof(Pitch),
             typeof(double),
             typeof(ArtificialHorizon),
-            new PropertyMetadata(0.0));
+            new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
 
     public double Roll
     {
@@ -73,9 +73,6 @@ public partial class ArtificialHorizon : UserControl
     private EllipseGeometry? _clip;
     private readonly StreamGeometry _rollPointerGeom = new();
 
-    private double _lastPitch;
-    private double _lastRoll;
-
     // =====================================================
     // ctor / lifecycle
     // =====================================================
@@ -86,25 +83,6 @@ public partial class ArtificialHorizon : UserControl
 
         BuildRollPointerGeometry();
         _rollPointerGeom.Freeze();
-
-        CompositionTarget.Rendering += OnRendering;
-        Unloaded += (_, _) => CompositionTarget.Rendering -= OnRendering;
-    }
-
-    // =====================================================
-    // Render loop (~60 FPS)
-    // =====================================================
-
-    private void OnRendering(object? sender, EventArgs e)
-    {
-        if (Math.Abs(Pitch - _lastPitch) < 0.02 &&
-            Math.Abs(Roll - _lastRoll) < 0.02)
-            return;
-
-        _lastPitch = Pitch;
-        _lastRoll = Roll;
-
-        InvalidateVisual();
     }
 
     protected override void OnRenderSizeChanged(SizeChangedInfo sizeInfo)
@@ -115,7 +93,7 @@ public partial class ArtificialHorizon : UserControl
     }
 
     // =====================================================
-    // Main render
+    // Main render (triggered by AffectsRender on DP change)
     // =====================================================
 
     protected override void OnRender(DrawingContext dc)
@@ -156,7 +134,7 @@ public partial class ArtificialHorizon : UserControl
     }
 
     // =====================================================
-    // Static layer (NO PITCH LADDER HERE)
+    // Static layer
     // =====================================================
 
     private void BuildStaticLayer(double radius)
@@ -212,7 +190,7 @@ public partial class ArtificialHorizon : UserControl
     }
 
     // =====================================================
-    // Dynamic pitch ladder (CLIPPED, NO ROLL)
+    // Dynamic pitch ladder
     // =====================================================
 
     private void DrawDynamicPitchLadder(
@@ -235,7 +213,6 @@ public partial class ArtificialHorizon : UserControl
         {
             double y = -p * scale;
 
-            // ⛔ ограничение строго по окружности
             if (Math.Abs(y) > radius)
                 continue;
 
@@ -268,7 +245,7 @@ public partial class ArtificialHorizon : UserControl
     }
 
     // =====================================================
-    // Fixed aircraft symbol (CENTERED)
+    // Fixed aircraft symbol
     // =====================================================
 
     private void DrawFixedSymbolStatic(DrawingContext dc, double radius)

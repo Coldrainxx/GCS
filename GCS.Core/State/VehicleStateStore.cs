@@ -9,6 +9,7 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
 {
     private readonly IMavlinkBackend _backend;
     private readonly SynchronizationContext? _context;
+    private readonly Timer _throttleTimer;
 
     private VehicleState _current = new(
         Connection: null,
@@ -21,6 +22,12 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
         Gps: null
     );
 
+    // Accumulated state from background threads — written freely, read on timer tick
+    private VehicleState _pending;
+    private volatile bool _hasPendingUpdate;
+
+    private const int ThrottleIntervalMs = 33; // ~30 fps max to UI
+
     public VehicleState Current => _current;
 
     public event Action<VehicleState>? StateChanged;
@@ -31,6 +38,7 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
     {
         _backend = backend;
         _context = context ?? SynchronizationContext.Current;
+        _pending = _current;
 
         _backend.ConnectionStateChanged += OnConnectionState;
         _backend.HeartbeatReceived += OnHeartbeat;
@@ -39,16 +47,19 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
         _backend.VfrHudReceived += OnVfrHud;
         _backend.BatteryReceived += OnBattery;
         _backend.GpsStateReceived += OnGpsState;
+
+        // Timer fires on a threadpool thread, then posts to UI
+        _throttleTimer = new Timer(OnThrottleTick, null, ThrottleIntervalMs, ThrottleIntervalMs);
     }
 
     private void OnConnectionState(ConnectionState state)
     {
-        Update(_current with { Connection = state });
+        AccumulateUpdate(_pending with { Connection = state });
     }
 
     private void OnHeartbeat(HeartbeatState hb)
     {
-        var next = _current;
+        var next = _pending;
 
         if (hb.Mode != null)
         {
@@ -57,53 +68,73 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
 
         next = next with { IsArmed = hb.IsArmed };
 
-        Update(next);
+        AccumulateUpdate(next);
     }
 
     private void OnAttitude(AttitudeState attitude)
     {
-        Update(_current with { Attitude = attitude });
+        AccumulateUpdate(_pending with { Attitude = attitude });
     }
 
     private void OnPosition(PositionState position)
     {
-        Update(_current with { Position = position });
+        AccumulateUpdate(_pending with { Position = position });
     }
 
     private void OnVfrHud(VfrHudState hud)
     {
-        Update(_current with { VfrHud = hud });
+        AccumulateUpdate(_pending with { VfrHud = hud });
     }
 
     private void OnBattery(BatteryState battery)
     {
-        Update(_current with { Battery = battery });
+        AccumulateUpdate(_pending with { Battery = battery });
     }
 
     private void OnGpsState(GpsState gps)
     {
-        Update(_current with { Gps = gps });
+        AccumulateUpdate(_pending with { Gps = gps });
     }
 
-    private void Update(VehicleState next)
+    /// <summary>
+    /// Accumulates the update without touching the UI thread.
+    /// Multiple telemetry messages between timer ticks are merged.
+    /// </summary>
+    private void AccumulateUpdate(VehicleState next)
     {
+        _pending = next;
+        _hasPendingUpdate = true;
+    }
+
+    /// <summary>
+    /// Fires at ~30 fps. Pushes accumulated state to UI thread if anything changed.
+    /// </summary>
+    private void OnThrottleTick(object? state)
+    {
+        if (!_hasPendingUpdate) return;
+        _hasPendingUpdate = false;
+
+        var snapshot = _pending;
+
         if (_context != null)
         {
             _context.Post(_ =>
             {
-                _current = next;
+                _current = snapshot;
                 StateChanged?.Invoke(_current);
             }, null);
         }
         else
         {
-            _current = next;
+            _current = snapshot;
             StateChanged?.Invoke(_current);
         }
     }
 
     public void Dispose()
     {
+        _throttleTimer.Dispose();
+
         _backend.ConnectionStateChanged -= OnConnectionState;
         _backend.HeartbeatReceived -= OnHeartbeat;
         _backend.AttitudeReceived -= OnAttitude;

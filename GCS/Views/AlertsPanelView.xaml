@@ -4,143 +4,237 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              mc:Ignorable="d" 
-             d:DesignHeight="100" d:DesignWidth="1600">
+             d:DesignHeight="48" d:DesignWidth="1600">
     
     <UserControl.Resources>
-        <SolidColorBrush x:Key="PanelBackground" Color="#151922"/>
-        <SolidColorBrush x:Key="BorderBrush" Color="#2D333D"/>
-        <SolidColorBrush x:Key="PrimaryText" Color="#E6EDF3"/>
-        <SolidColorBrush x:Key="SecondaryText" Color="#8B949E"/>
-        <SolidColorBrush x:Key="AccentGreen" Color="#3FB950"/>
-        <SolidColorBrush x:Key="AccentOrange" Color="#FF9500"/>
-        <SolidColorBrush x:Key="AccentRed" Color="#F85149"/>
+        <SolidColorBrush x:Key="PanelBg" Color="#0D1117"/>
+        <SolidColorBrush x:Key="CardBg" Color="#161B22"/>
+        <SolidColorBrush x:Key="Border" Color="#21262D"/>
+        <SolidColorBrush x:Key="TextPrimary" Color="#E6EDF3"/>
+        <SolidColorBrush x:Key="TextSecondary" Color="#8B949E"/>
+        <SolidColorBrush x:Key="Green" Color="#3FB950"/>
+        <SolidColorBrush x:Key="Orange" Color="#FF9500"/>
+        <SolidColorBrush x:Key="Red" Color="#F85149"/>
+        <SolidColorBrush x:Key="Cyan" Color="#39D0D8"/>
+
+        <!-- Pulsing animation for critical alerts -->
+        <Storyboard x:Key="PulseAnimation" RepeatBehavior="Forever">
+            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                           From="1" To="0.3" Duration="0:0:0.6"
+                           AutoReverse="True"/>
+        </Storyboard>
     </UserControl.Resources>
 
-    <Grid Background="{StaticResource PanelBackground}">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto"/>
-            <ColumnDefinition Width="*"/>
-        </Grid.ColumnDefinitions>
+    <Border Background="{StaticResource PanelBg}" 
+            BorderBrush="{StaticResource Border}" 
+            BorderThickness="0,1,0,0">
+        <Grid Margin="8,4">
+            <Grid.ColumnDefinitions>
+                <!-- Status indicators -->
+                <ColumnDefinition Width="Auto"/>
+                <!-- Separator -->
+                <ColumnDefinition Width="Auto"/>
+                <!-- Message ticker -->
+                <ColumnDefinition Width="*"/>
+                <!-- Separator -->
+                <ColumnDefinition Width="Auto"/>
+                <!-- Alert counter -->
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
 
-        <!-- Left: Status Icons -->
-        <StackPanel Grid.Column="0" 
-                    Orientation="Horizontal" 
-                    VerticalAlignment="Center"
-                    Margin="15,0">
-            <!-- Link Status -->
-            <Border Background="#1C2128" 
-                    BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="4"
-                    Padding="12,8"
-                    Margin="0,0,10,0">
-                <StackPanel Orientation="Horizontal">
-                    <Ellipse Width="12" Height="12" Margin="0,0,8,0">
-                        <Ellipse.Style>
-                            <Style TargetType="Ellipse">
-                                <Setter Property="Fill" Value="{StaticResource AccentRed}"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding LinkAlive}" Value="True">
-                                        <Setter Property="Fill" Value="{StaticResource AccentGreen}"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Ellipse.Style>
-                    </Ellipse>
-                    <TextBlock Text="LINK" 
-                              Foreground="{StaticResource SecondaryText}"
-                              FontSize="11"
-                              FontWeight="Bold"/>
-                </StackPanel>
-            </Border>
+            <!-- ═══ LEFT: Compact Status Indicators ═══ -->
+            <StackPanel Grid.Column="0" 
+                        Orientation="Horizontal" 
+                        VerticalAlignment="Center">
 
-            <!-- Attitude Status -->
-            <Border Background="#1C2128" 
-                    BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="4"
-                    Padding="12,8"
-                    Margin="0,0,10,0">
-                <StackPanel Orientation="Horizontal">
-                    <Ellipse Width="12" Height="12" Margin="0,0,8,0">
-                        <Ellipse.Style>
-                            <Style TargetType="Ellipse">
-                                <Setter Property="Fill" Value="{StaticResource AccentRed}"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding AttitudeFresh}" Value="True">
-                                        <Setter Property="Fill" Value="{StaticResource AccentGreen}"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Ellipse.Style>
-                    </Ellipse>
-                    <TextBlock Text="ATT" 
-                              Foreground="{StaticResource SecondaryText}"
-                              FontSize="11"
-                              FontWeight="Bold"/>
-                </StackPanel>
-            </Border>
-
-            <!-- Position Status -->
-            <Border Background="#1C2128" 
-                    BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="4"
-                    Padding="12,8">
-                <StackPanel Orientation="Horizontal">
-                    <Ellipse Width="12" Height="12" Margin="0,0,8,0">
-                        <Ellipse.Style>
-                            <Style TargetType="Ellipse">
-                                <Setter Property="Fill" Value="{StaticResource AccentRed}"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding PositionFresh}" Value="True">
-                                        <Setter Property="Fill" Value="{StaticResource AccentGreen}"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Ellipse.Style>
-                    </Ellipse>
-                    <TextBlock Text="GPS" 
-                              Foreground="{StaticResource SecondaryText}"
-                              FontSize="11"
-                              FontWeight="Bold"/>
-                </StackPanel>
-            </Border>
-        </StackPanel>
-
-        <!-- Right: Messages/Alerts Scrolling Area -->
-        <ScrollViewer Grid.Column="1" 
-                      HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Auto"
-                      Margin="10,10">
-            <ItemsControl x:Name="AlertsList">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate>
-                        <Border Background="#1C2128" 
-                                BorderThickness="1"
-                                CornerRadius="4"
-                                Padding="10,6"
-                                Margin="0,0,10,5">
-                            <Border.Style>
-                                <Style TargetType="Border">
-                                    <Setter Property="BorderBrush" Value="{StaticResource AccentGreen}"/>
-                                    <!-- Add triggers for different severity levels -->
+                <!-- LINK -->
+                <Border Background="{StaticResource CardBg}" 
+                        BorderBrush="{StaticResource Border}"
+                        BorderThickness="1" CornerRadius="4"
+                        Padding="8,4" Margin="0,0,4,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="8" Height="8" Margin="0,0,5,0">
+                            <Ellipse.Style>
+                                <Style TargetType="Ellipse">
+                                    <Setter Property="Fill" Value="{StaticResource Red}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding LinkAlive}" Value="True">
+                                            <Setter Property="Fill" Value="{StaticResource Green}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
                                 </Style>
-                            </Border.Style>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="{Binding Timestamp, StringFormat=HH:mm:ss}" 
-                                          Foreground="{StaticResource SecondaryText}"
-                                          FontSize="11"
-                                          FontFamily="Consolas"
-                                          Margin="0,0,10,0"/>
-                                <TextBlock Text="{Binding Message}" 
-                                          Foreground="{StaticResource PrimaryText}"
-                                          FontSize="12"/>
-                            </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ScrollViewer>
-    </Grid>
+                            </Ellipse.Style>
+                        </Ellipse>
+                        <TextBlock Text="LINK" Foreground="{StaticResource TextSecondary}" 
+                                  FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- GPS -->
+                <Border Background="{StaticResource CardBg}" 
+                        BorderBrush="{StaticResource Border}"
+                        BorderThickness="1" CornerRadius="4"
+                        Padding="8,4" Margin="0,0,4,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="8" Height="8" Margin="0,0,5,0">
+                            <Ellipse.Fill>
+                                <SolidColorBrush Color="{Binding GpsStatusColor}"/>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <TextBlock Foreground="{StaticResource TextSecondary}" 
+                                  FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center">
+                            <Run Text="{Binding GpsFixString, Mode=OneWay}"/>
+                            <Run Text=" "/>
+                            <Run Text="{Binding GpsSatellites, Mode=OneWay, StringFormat=({0})}" 
+                                 Foreground="{StaticResource Cyan}"/>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+
+                <!-- BATTERY -->
+                <Border Background="{StaticResource CardBg}" 
+                        BorderBrush="{StaticResource Border}"
+                        BorderThickness="1" CornerRadius="4"
+                        Padding="8,4" Margin="0,0,4,0">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse Width="8" Height="8" Margin="0,0,5,0">
+                            <Ellipse.Fill>
+                                <SolidColorBrush Color="{Binding BatteryStatusColor}"/>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <TextBlock Foreground="{StaticResource TextSecondary}" 
+                                  FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center">
+                            <Run Text="{Binding BatteryPercent, Mode=OneWay, StringFormat={}{0}%}"/>
+                            <Run Text=" "/>
+                            <Run Text="{Binding BatteryVoltage, Mode=OneWay, StringFormat={}{0:F1}V}" 
+                                 Foreground="{StaticResource Cyan}"/>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+
+                <!-- ARMED STATUS -->
+                <Border CornerRadius="4" Padding="8,4" Margin="0,0,4,0">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="#1A3FB950"/>
+                            <Setter Property="BorderBrush" Value="#3FB950"/>
+                            <Setter Property="BorderThickness" Value="1"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsArmed}" Value="True">
+                                    <Setter Property="Background" Value="#1AF85149"/>
+                                    <Setter Property="BorderBrush" Value="#F85149"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <TextBlock FontSize="10" FontWeight="Bold" VerticalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{StaticResource Green}"/>
+                                <Setter Property="Text" Value="DISARMED"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsArmed}" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource Red}"/>
+                                        <Setter Property="Text" Value="⚠ ARMED"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </Border>
+            </StackPanel>
+
+            <!-- Separator -->
+            <Rectangle Grid.Column="1" Width="1" Fill="{StaticResource Border}" 
+                      Margin="8,6" VerticalAlignment="Stretch"/>
+
+            <!-- ═══ CENTER: Message Ticker ═══ -->
+            <Grid Grid.Column="2" VerticalAlignment="Center" Margin="4,0">
+                <!-- Latest autopilot message -->
+                <TextBlock FontSize="11" FontFamily="Consolas"
+                          TextTrimming="CharacterEllipsis"
+                          VerticalAlignment="Center">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+                            <Setter Property="Text" Value="No messages"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding LatestMessage}" Value="">
+                                    <Setter Property="Text" Value="No messages"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <TextBlock Text="{Binding LatestMessage}" 
+                          FontSize="11" FontFamily="Consolas"
+                          TextTrimming="CharacterEllipsis"
+                          VerticalAlignment="Center"
+                          Visibility="{Binding LatestMessage, Converter={StaticResource StringToVisibilityConverter}, FallbackValue=Collapsed}">
+                    <TextBlock.Foreground>
+                        <SolidColorBrush Color="{Binding LatestMessageColor}"/>
+                    </TextBlock.Foreground>
+                </TextBlock>
+            </Grid>
+
+            <!-- Separator -->
+            <Rectangle Grid.Column="3" Width="1" Fill="{StaticResource Border}" 
+                      Margin="8,6" VerticalAlignment="Stretch"/>
+
+            <!-- ═══ RIGHT: Active Alerts Counter ═══ -->
+            <Border Grid.Column="4" CornerRadius="4" Padding="10,4"
+                    MinWidth="40" VerticalAlignment="Center">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Background" Value="#1A3FB950"/>
+                        <Setter Property="BorderBrush" Value="#3FB950"/>
+                        <Setter Property="BorderThickness" Value="1"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding HighestSeverity}" Value="Warning">
+                                <Setter Property="Background" Value="#1AFF9500"/>
+                                <Setter Property="BorderBrush" Value="#FF9500"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding HighestSeverity}" Value="Critical">
+                                <Setter Property="Background" Value="#1AF85149"/>
+                                <Setter Property="BorderBrush" Value="#F85149"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                    <TextBlock FontSize="10" FontWeight="Bold" VerticalAlignment="Center"
+                              Margin="0,0,4,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="{StaticResource Green}"/>
+                                <Setter Property="Text" Value="✓ OK"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasActiveAlerts}" Value="True">
+                                        <Setter Property="Foreground" Value="{StaticResource Red}"/>
+                                        <Setter Property="Text" Value="⚠"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <TextBlock Text="{Binding ActiveAlertCount, StringFormat={}{0} ALERT(S)}"
+                              FontSize="10" FontWeight="Bold" VerticalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasActiveAlerts}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                        <TextBlock.Foreground>
+                            <SolidColorBrush Color="{Binding SeverityColor}"/>
+                        </TextBlock.Foreground>
+                    </TextBlock>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
 </UserControl>

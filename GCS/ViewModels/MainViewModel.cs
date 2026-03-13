@@ -245,6 +245,16 @@ public class MainViewModel : ViewModelBase, IDisposable
         {
             Connection.StatusMessage = $"Connected - SysID: {state.Connection.SystemId}";
         }
+        Alerts.UpdateFromTelemetry(
+            linkAlive: Telemetry.LinkAlive,
+            attitudeFresh: Telemetry.AttitudeFresh,
+            positionFresh: Telemetry.PositionFresh,
+            isArmed: state.IsArmed,
+            voltage: state.Battery?.VoltageVolts ?? 0,
+            batteryPercent: state.Battery?.RemainingPercent ?? 0,
+            gpsFixType: state.Gps?.FixType ?? 0,
+            gpsSatellites: state.Gps?.SatellitesVisible ?? 0,
+            gpsFixString: state.Gps?.FixTypeString ?? "NO GPS");
     }
 
     private void OnHealthStateChanged(HealthState health)
@@ -265,6 +275,7 @@ public class MainViewModel : ViewModelBase, IDisposable
     private void OnAutopilotMessage(AutopilotMessage message)
     {
         Messages.AddMessage(message);
+        Alerts.OnAutopilotMessage(message);
     }
 
     private void OnRcChannelsReceived(RcChannelsData data)

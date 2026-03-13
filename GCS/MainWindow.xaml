@@ -378,7 +378,7 @@
                     Background="{StaticResource PanelBackground}"
                     BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="0,1,0,0">
-                <views:AlertsPanelView DataContext="{Binding Telemetry}"/>
+                <views:AlertsPanelView DataContext="{Binding Alerts}"/>
             </Border>
 
             <!-- CONNECTION POPUP (Hidden by default) -->
