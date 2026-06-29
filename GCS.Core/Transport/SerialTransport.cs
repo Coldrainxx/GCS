@@ -97,6 +97,7 @@ public sealed class SerialTransport : TransportBase
         catch (Exception ex)
         {
             RaiseError(ex);
+            throw;
         }
     }
 

@@ -12,7 +12,6 @@
     <PackageReference Include="runtime.maccatalyst-x64.runtime.native.System.IO.Ports" Version="10.0.4" />
     <PackageReference Include="runtime.native.System.IO.Ports" Version="10.0.4" />
     <PackageReference Include="System.IO.Ports" Version="10.0.4" />
-    <PackageReference Include="System.Threading" Version="4.3.0" />
   </ItemGroup>
   <ItemGroup>
 	<Content Include="Dialects\**\*.xml">

@@ -57,7 +57,6 @@ public sealed class MavlinkBackend : IMavlinkBackend
     // ═══════════════════════════════════════════════════════════════
 
     public event Action<AutopilotMessage>? AutopilotMessageReceived;
-    public event Action<ushort, byte>? CommandAckReceived;
 
     // ═══════════════════════════════════════════════════════════════
     // Events - Mission Protocol

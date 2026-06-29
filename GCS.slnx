@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="GCS.Core/GCS.Core.csproj" />
   <Project Path="GCS/GCS.csproj" />
+  <Project Path="GCS.Core.Tests/GCS.Core.Tests.csproj" />
 </Solution>

@@ -23,7 +23,6 @@ public interface IMavlinkBackend : IDisposable
     // ═══════════════════════════════════════════════════════════════
 
     event Action<AutopilotMessage>? AutopilotMessageReceived;
-    event Action<ushort, byte>? CommandAckReceived;  // command, result
 
     // ═══════════════════════════════════════════════════════════════
     // RX Events - Mission Protocol

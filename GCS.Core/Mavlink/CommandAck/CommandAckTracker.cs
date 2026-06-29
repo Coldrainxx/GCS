@@ -17,6 +17,11 @@ public sealed class CommandAckTracker
         var key = new CommandKey(commandId, systemId, componentId);
         var pending = new PendingCommand(commandId);
 
+        // If an identical command is still pending, complete the old awaiter
+        // so it cannot hang forever once we overwrite its dictionary slot.
+        if (_pending.TryGetValue(key, out var previous))
+            previous.Tcs.TrySetResult(CommandAckResult.Failed);
+
         _pending[key] = pending;
         return pending.Tcs.Task;
     }

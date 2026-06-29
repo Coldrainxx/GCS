@@ -65,6 +65,7 @@ public sealed class UdpTransport : TransportBase
         catch (Exception ex)
         {
             RaiseError(ex);
+            throw;
         }
     }
 
