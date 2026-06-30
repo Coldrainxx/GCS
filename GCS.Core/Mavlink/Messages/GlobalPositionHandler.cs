@@ -43,16 +43,38 @@ public sealed class GlobalPositionHandler : IMavlinkMessageHandler
             double lat = latE7 / 1e7;
             double lon = lonE7 / 1e7;
 
- 
+            float velNorth = vx / 100.0f;
+            float velEast = vy / 100.0f;
+
+            // hdg == 65535 (UINT16_MAX) is the MAVLink "heading unavailable" sentinel.
+            // When set, fall back to course-over-ground derived from the NED velocity
+            // (atan2(east, north)) so the map icon still points sensibly while moving.
+            float headingDeg;
+            if (hdgCdeg == ushort.MaxValue)
+            {
+                if (Math.Abs(velNorth) > 0.1f || Math.Abs(velEast) > 0.1f)
+                {
+                    double course = Math.Atan2(velEast, velNorth) * (180.0 / Math.PI);
+                    headingDeg = (float)((course + 360.0) % 360.0);
+                }
+                else
+                {
+                    headingDeg = 0f; // stationary and no compass heading
+                }
+            }
+            else
+            {
+                headingDeg = hdgCdeg / 100.0f;
+            }
 
             var state = new PositionState(
                 LatitudeDeg: lat,
                 LongitudeDeg: lon,
                 AltitudeMslMeters: (float)(altMm / 1000.0),
                 AltitudeRelMeters: (float)(relAltMm / 1000.0),
-                HeadingDeg: hdgCdeg / 100.0f,
-                VelocityNorthMps: vx / 100.0f,
-                VelocityEastMps: vy / 100.0f,
+                HeadingDeg: headingDeg,
+                VelocityNorthMps: velNorth,
+                VelocityEastMps: velEast,
                 VelocityDownMps: vz / 100.0f,
                 TimestampUtc: DateTime.UtcNow
             );

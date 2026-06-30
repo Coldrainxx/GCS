@@ -362,3 +362,5 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+# Local 3D model copy served to the map WebView (duplicated from GCS/Models)
+GCS/Map/models/*.stl

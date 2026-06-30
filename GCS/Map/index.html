@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="lib/maplibre-gl.css" />
+    <script src="lib/maplibre-gl.js"></script>
+    <script src="lib/three.min.js"></script>
+    <script src="lib/STLLoader.js"></script>
+    <style>
+        html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; background: #0b1a2b; }
+
+        .map-btn {
+            position: absolute; z-index: 1000; padding: 10px 15px;
+            border: none; border-radius: 6px; cursor: pointer;
+            font-family: 'Segoe UI', sans-serif; font-weight: bold; font-size: 14px;
+            color: white; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        #followBtn { top: 10px; left: 10px; background: #3FB950; }
+        #viewBtn   { top: 10px; left: 150px; background: #1F6FEB; }
+
+        .uav-icon { will-change: transform; }
+        .wp-marker { cursor: move; }
+
+        .distance-label {
+            background: rgba(0,0,0,0.7); border-radius: 3px;
+            color: #58A6FF; font: bold 10px 'Segoe UI', sans-serif;
+            padding: 2px 5px; white-space: nowrap; pointer-events: none;
+        }
+
+        .info-panel {
+            position: absolute; bottom: 10px; left: 10px; z-index: 1000;
+            background: rgba(13, 17, 23, 0.9); color: #E6EDF3;
+            padding: 10px 15px; border-radius: 8px;
+            font: 12px 'Segoe UI', sans-serif; min-width: 160px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        .info-row { display: flex; justify-content: space-between; margin: 3px 0; }
+        .info-label { color: #8B949E; }
+        .info-value { color: #58A6FF; font-weight: bold; }
+        .gps-section { border-top: 1px solid #30363D; margin-top: 8px; padding-top: 8px; }
+        .gps-fix { padding: 2px 6px; border-radius: 4px; font-size: 10px; }
+        .gps-fix-none { background: #F85149; color: white; }
+        .gps-fix-2d { background: #D29922; color: white; }
+        .gps-fix-3d { background: #3FB950; color: white; }
+        .gps-fix-rtk { background: #A371F7; color: white; }
+        .sat-icon { margin-right: 4px; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <button id="followBtn" class="map-btn">📍 Follow UAV</button>
+    <button id="viewBtn" class="map-btn">🧭 3D View</button>
+
+    <div class="info-panel" id="infoPanel">
+        <div class="info-row"><span class="info-label">Lat:</span><span class="info-value" id="infoLat">--</span></div>
+        <div class="info-row"><span class="info-label">Lon:</span><span class="info-value" id="infoLon">--</span></div>
+        <div class="info-row"><span class="info-label">Alt:</span><span class="info-value" id="infoAlt">--</span></div>
+        <div class="info-row"><span class="info-label">GS:</span><span class="info-value" id="infoGS">--</span></div>
+        <div class="info-row"><span class="info-label">HDG:</span><span class="info-value" id="infoHdg">--</span></div>
+        <div class="gps-section">
+            <div class="info-row">
+                <span class="info-label"><span class="sat-icon">🛰️</span>Sats:</span>
+                <span class="info-value" id="infoSats">--</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Fix:</span>
+                <span class="gps-fix gps-fix-none" id="infoFix">NO GPS</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">HDOP:</span>
+                <span class="info-value" id="infoHdop">--</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="map.js"></script>
+</body>
+</html>
