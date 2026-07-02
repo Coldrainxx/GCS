@@ -19,6 +19,7 @@ public partial class MapView : UserControl
     private double _lastRoll = 0;
     private double _lastPitch = 0;
     private GCS.ViewModels.MissionViewModel? _missionVm;
+    private GCS.ViewModels.MainViewModel? _mainVm;
 
     public MapView()
     {
@@ -32,6 +33,7 @@ public partial class MapView : UserControl
         var window = Window.GetWindow(this);
         if (window?.DataContext is GCS.ViewModels.MainViewModel mainVm)
         {
+            _mainVm = mainVm;
             _missionVm = mainVm.Mission;
             _missionVm.WaypointsCleared += OnWaypointsCleared;
             _missionVm.WaypointAdded += OnWaypointAdded;
@@ -116,6 +118,16 @@ public partial class MapView : UserControl
                     double.TryParse(coords[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double lon))
                 {
                     _missionVm?.AddWaypoint(lat, lon);
+                }
+            }
+            else if (message.StartsWith("flyto:"))
+            {
+                var coords = message.Substring(6).Split(',');
+                if (coords.Length == 2 &&
+                    double.TryParse(coords[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double lat) &&
+                    double.TryParse(coords[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double lon))
+                {
+                    _mainVm?.FlyTo(lat, lon);
                 }
             }
             else if (message.StartsWith("drag:"))

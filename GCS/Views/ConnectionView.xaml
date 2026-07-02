@@ -73,11 +73,15 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="20">
                 <!-- Header -->
-                <TextBlock Text="CONNECTION" 
-                          FontSize="18" 
-                          FontWeight="Bold" 
-                          Foreground="{StaticResource PrimaryText}"
-                          Margin="0,0,0,20"/>
+
+
+                <!-- Recent connections -->
+                <TextBlock Text="RECENT" Style="{StaticResource LabelStyle}"/>
+                <ComboBox ItemsSource="{Binding RecentConnections}"
+                          SelectedItem="{Binding SelectedProfile}"
+                          DisplayMemberPath="Label"
+                          IsEnabled="{Binding CanEditSettings}"
+                          Margin="0,0,0,8"/>
 
                 <!-- Transport Type -->
                 <TextBlock Text="TRANSPORT TYPE" Style="{StaticResource LabelStyle}"/>
@@ -145,10 +149,15 @@
                        Margin="0,16,0,8"
                        Background="{StaticResource AccentGreen}"/>
                 
-                <Button Content="DISCONNECT" 
+                <Button Content="DISCONNECT"
                        Command="{Binding DisconnectCommand}"
                        IsEnabled="{Binding IsConnected}"
                        Background="{StaticResource AccentRed}"/>
+
+                <CheckBox Content="Auto-reconnect on link loss"
+                          IsChecked="{Binding AutoReconnect}"
+                          Foreground="{StaticResource SecondaryText}"
+                          FontSize="12" Margin="2,14,0,0"/>
 
                 <!-- Status -->
                 <Border Background="#0A0E14" 

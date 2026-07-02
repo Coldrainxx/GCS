@@ -1,11 +1,3 @@
-// MapLibre GL implementation of the GCS map. Keeps the exact message contract
-// the WPF side already uses (addWaypoint/updateWaypoint/clearWaypoints/
-// updatePathLine/updateUAV/updateGpsStatus + 'click:'/'drag:' postMessage), so
-// MapView.xaml.cs only changes at initialization.
-//
-// Basemap is Esri World Imagery (satellite) with Esri reference label overlays.
-// In 3D (tilted) view the UAV is drawn as the real STL model via a Three.js
-// custom layer; in 2D it is the flat heading arrow.
 
 (function () {
     "use strict";
@@ -25,7 +17,7 @@
     var trail = [];            // [lon,lat] history
     var MAX_TRAIL_POINTS = 500;
 
-    // 3D UAV model (Three.js custom layer). Tune these if it looks off:
+    // 3D UAV model (Three.js custom layer). 
     var MODEL_URL = "models/WCR.master_1.stl";
     var MODEL_SIZE_M = 30;      // approx on-ground size in metres (visibility)
     var HEADING_OFFSET = 0;     // degrees, if the nose points the wrong way
@@ -38,7 +30,6 @@
     var uav = { lng: cfg.centerLon, lat: cfg.centerLat, heading: 0, alt: 0, roll: 0, pitch: 0 };
 
     // ── Basemap style ───────────────────────────────────────────────
-    // Esri World Imagery satellite (free, no API key, sub-meter in cities).
     // Note the Esri tile URL order is {z}/{y}/{x}, not {z}/{x}/{y}.
     function buildStyle() {
         return {
@@ -366,6 +357,25 @@
         if (window.chrome && window.chrome.webview) window.chrome.webview.postMessage(s);
     }
 
+    // Right-click "Fly here" context menu -> asks the WPF side (which confirms).
+    var flyMenu = null;
+    function hideFlyMenu() { if (flyMenu) { flyMenu.remove(); flyMenu = null; } }
+    function showFlyMenu(x, y, lat, lng) {
+        hideFlyMenu();
+        flyMenu = document.createElement("div");
+        flyMenu.style.cssText = "position:absolute;z-index:1200;left:" + x + "px;top:" + y + "px;" +
+            "background:#1C2128;border:1px solid #2D333D;border-radius:6px;padding:4px;box-shadow:0 2px 8px rgba(0,0,0,0.5);";
+        var btn = document.createElement("button");
+        btn.textContent = "✈ Fly here";
+        btn.style.cssText = "background:transparent;color:#E6EDF3;border:none;cursor:pointer;" +
+            "font:bold 12px 'Segoe UI';padding:6px 12px;white-space:nowrap;";
+        btn.onmouseover = function () { btn.style.background = "#2D333D"; };
+        btn.onmouseout = function () { btn.style.background = "transparent"; };
+        btn.onclick = function (ev) { ev.stopPropagation(); postMsg("flyto:" + lat + "," + lng); hideFlyMenu(); };
+        flyMenu.appendChild(btn);
+        document.body.appendChild(flyMenu);
+    }
+
     // ── Init ────────────────────────────────────────────────────────
     function init() {
         map = new maplibregl.Map({
@@ -377,8 +387,9 @@
             attributionControl: false
         });
 
-        map.on("dragstart", function () { userMovedMap = true; followUAV = false; updateFollowBtn(); });
-        map.on("click", function (e) { postMsg("click:" + e.lngLat.lat + "," + e.lngLat.lng); });
+        map.on("dragstart", function () { userMovedMap = true; followUAV = false; updateFollowBtn(); hideFlyMenu(); });
+        map.on("click", function (e) { hideFlyMenu(); postMsg("click:" + e.lngLat.lat + "," + e.lngLat.lng); });
+        map.on("contextmenu", function (e) { showFlyMenu(e.point.x, e.point.y, e.lngLat.lat, e.lngLat.lng); });
 
         document.getElementById("followBtn").onclick = function () {
             followUAV = !followUAV; userMovedMap = !followUAV; updateFollowBtn();

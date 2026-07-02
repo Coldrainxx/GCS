@@ -1,0 +1,257 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+
+namespace GCS.Parameters;
+
+/// <summary>
+/// One curated parameter. <see cref="Names"/> lists the primary name first and
+/// any firmware-rename aliases after it; requests are sent for all names and
+/// whichever the vehicle answers becomes the one we write back to.
+/// </summary>
+public sealed record ParameterDef(string[] Names, string Group, string Label, string Description)
+{
+    public string Units { get; init; } = "";
+    public int Decimals { get; init; } = 2;
+    public double? Min { get; init; }
+    public double? Max { get; init; }
+
+    public string Name => Names[0];
+
+    public string RangeText =>
+        Min.HasValue && Max.HasValue
+            ? $"{Fmt(Min.Value)} – {Fmt(Max.Value)}"
+            : "";
+
+    public bool Matches(string name) =>
+        Names.Any(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
+
+    private static string Fmt(double v) => v.ToString("0.####", CultureInfo.InvariantCulture);
+}
+
+/// <summary>
+/// The parameter list shown on the Parameters tab, with ArduPilot Plane /
+/// QuadPlane names and value ranges. Edit this list to add/remove parameters.
+/// </summary>
+public static class ParameterCatalog
+{
+    private const string Airspeed = "Airspeed & Baro";
+    private const string Ahrs = "AHRS & Altitude";
+    private const string Battery = "Battery";
+    private const string System = "System & Failsafe";
+    private const string Nav = "Navigation (L1)";
+    private const string Tuning = "Pitch / Roll Tuning";
+    private const string Tecs = "TECS";
+    private const string Takeoff = "Takeoff";
+    private const string RtlWp = "RTL & Waypoints";
+    private const string Throttle = "Throttle";
+    private const string Quad = "QuadPlane";
+    private const string QuadPid = "QuadPlane PIDs";
+
+    public static readonly IReadOnlyList<ParameterDef> All = new List<ParameterDef>
+    {
+        // ── Airspeed & Baro ──────────────────────────────────────────
+        new(new[]{ "AIRSPEED_CRUISE", "TRIM_ARSPD_CM" }, Airspeed, "Cruise airspeed", "Target cruise airspeed.") { Units="m/s", Decimals=1 },
+        new(new[]{ "AIRSPEED_MAX", "ARSPD_FBW_MAX" }, Airspeed, "Max airspeed", "Maximum airspeed the autopilot will command.") { Units="m/s", Decimals=1, Min=5, Max=100 },
+        new(new[]{ "AIRSPEED_MIN", "ARSPD_FBW_MIN" }, Airspeed, "Min airspeed", "Minimum (stall-safe) airspeed.") { Units="m/s", Decimals=1, Min=5, Max=100 },
+        new(new[]{ "AIRSPEED_STALL" }, Airspeed, "Stall airspeed", "Stall speed used for scaling protections.") { Units="m/s", Decimals=1, Min=5, Max=75 },
+        new(new[]{ "ARSPD_TUBE_ORDR" }, Airspeed, "Pitot tube order", "Pitot tube pin order.") { Decimals=0 },
+        new(new[]{ "ARSPD_AUTOCAL" }, Airspeed, "Auto-calibrate", "Continuously calibrate the airspeed ratio.") { Decimals=0 },
+        new(new[]{ "ARSPD_OPTIONS" }, Airspeed, "Airspeed options", "Airspeed options bitmask.") { Decimals=0 },
+        new(new[]{ "ARSPD_PSI_RANGE" }, Airspeed, "Sensor PSI range", "Pressure sensor PSI range.") { Decimals=2 },
+        new(new[]{ "ARSPD_RATIO" }, Airspeed, "Airspeed ratio", "Airspeed calibration ratio.") { Decimals=3 },
+        new(new[]{ "ARSPD_SKIP_CAL" }, Airspeed, "Skip cal", "Skip airspeed offset calibration at boot.") { Decimals=0 },
+        new(new[]{ "ARSPD_TYPE" }, Airspeed, "Sensor type", "Airspeed sensor type.") { Decimals=0 },
+        new(new[]{ "ARSPD_USE" }, Airspeed, "Use airspeed", "0=disabled, 1=use, 2=use w/o throttle.") { Decimals=0 },
+        new(new[]{ "ARSPD_WIND_GATE" }, Airspeed, "Wind gate", "Wind estimate consistency gate.") { Decimals=1, Min=0, Max=10 },
+        new(new[]{ "ARSPD_WIND_MAX" }, Airspeed, "Wind max", "Max wind before airspeed is rejected.") { Units="m/s", Decimals=1 },
+        new(new[]{ "ARSPD_WIND_WARN" }, Airspeed, "Wind warn", "Wind speed warning threshold.") { Units="m/s", Decimals=1 },
+        new(new[]{ "ARSPD_OFFSET" }, Airspeed, "Airspeed offset", "Airspeed sensor zero offset.") { Decimals=2 },
+        new(new[]{ "BARO_FLTR_RNG" }, Airspeed, "Baro filter range", "Range of allowed baro sample change.") { Units="%", Decimals=0, Min=0, Max=100 },
+        new(new[]{ "BARO_PRIMARY" }, Airspeed, "Primary baro", "Which barometer is primary.") { Decimals=0 },
+        new(new[]{ "BARO_PROBE_EXT" }, Airspeed, "External baro probe", "External I2C baro probe bitmask.") { Decimals=0 },
+
+        // ── AHRS & Altitude ──────────────────────────────────────────
+        new(new[]{ "AHRS_TRIM_X" }, Ahrs, "Board roll trim", "Board mounting roll trim.") { Units="rad", Decimals=4, Min=-0.1745, Max=0.1745 },
+        new(new[]{ "AHRS_TRIM_Y" }, Ahrs, "Board pitch trim", "Board mounting pitch trim.") { Units="rad", Decimals=4, Min=-0.1745, Max=0.1745 },
+        new(new[]{ "AHRS_TRIM_Z" }, Ahrs, "Board yaw trim", "Board mounting yaw trim.") { Units="rad", Decimals=4, Min=-0.1745, Max=0.1745 },
+        new(new[]{ "AHRS_COMP_BETA" }, Ahrs, "Complementary beta", "AHRS complementary filter beta.") { Decimals=3 },
+        new(new[]{ "ALT_SLOPE_MAXHGT" }, Ahrs, "Alt slope max hgt", "Max height change to trigger alt slope.") { Units="m", Decimals=0 },
+        new(new[]{ "ALT_SLOPE_MIN" }, Ahrs, "Alt slope min", "Minimum altitude slope distance.") { Units="m", Decimals=0, Min=0, Max=1000 },
+
+        // ── Battery ──────────────────────────────────────────────────
+        new(new[]{ "BATT_MONITOR" }, Battery, "Battery monitor", "Monitor type (0=off, 4=volt+current).") { Decimals=0 },
+        new(new[]{ "BATT_CAPACITY" }, Battery, "Capacity", "Pack capacity.") { Units="mAh", Decimals=0 },
+        new(new[]{ "BATT_LOW_VOLT" }, Battery, "Low voltage", "Low-battery failsafe voltage.") { Units="V", Decimals=1 },
+        new(new[]{ "BATT_CRT_VOLT" }, Battery, "Critical voltage", "Critical failsafe voltage.") { Units="V", Decimals=1 },
+        new(new[]{ "BATT_LOW_MAH" }, Battery, "Low mAh", "Consumed-mAh low failsafe.") { Units="mAh", Decimals=0 },
+        new(new[]{ "BATT_CRT_MAH" }, Battery, "Critical mAh", "Consumed-mAh critical failsafe.") { Units="mAh", Decimals=0 },
+        new(new[]{ "BATT_LOW_TIMER" }, Battery, "Low timer", "Time below threshold before failsafe.") { Units="s", Decimals=0, Min=0, Max=120 },
+        new(new[]{ "BATT_FS_LOW_ACT" }, Battery, "Low FS action", "Action on low-battery failsafe.") { Decimals=0 },
+        new(new[]{ "BATT_FS_CRT_ACT" }, Battery, "Critical FS action", "Action on critical-battery failsafe.") { Decimals=0 },
+        new(new[]{ "BATT_ARM_VOLT" }, Battery, "Arming voltage", "Minimum voltage required to arm.") { Units="V", Decimals=1 },
+        new(new[]{ "BATT_AMP_PERVLT" }, Battery, "Amps per volt", "Current sensor amps per volt.") { Decimals=2 },
+
+        // ── System & Failsafe ────────────────────────────────────────
+        new(new[]{ "BRD_SAFETYOPTION" }, System, "Safety options", "Safety switch options bitmask.") { Decimals=0 },
+        new(new[]{ "EFI_TYPE" }, System, "EFI type", "Electronic fuel injection type.") { Decimals=0 },
+        new(new[]{ "FLIGHT_OPTIONS" }, System, "Flight options", "Flight options bitmask.") { Decimals=0 },
+        new(new[]{ "FLTMODE_CH" }, System, "Mode channel", "RC channel used to select flight modes.") { Decimals=0 },
+        new(new[]{ "FS_GCS_ENABLE" }, System, "GCS failsafe", "Enable GCS (telemetry) failsafe.") { Decimals=0 },
+        new(new[]{ "FS_LONG_ACTN" }, System, "Long FS action", "Action on long failsafe.") { Decimals=0 },
+        new(new[]{ "FS_LONG_TIMEOUT" }, System, "Long FS timeout", "Time before long failsafe triggers.") { Units="s", Decimals=0, Min=1, Max=300 },
+        new(new[]{ "FS_SHORT_ACTN" }, System, "Short FS action", "Action on short failsafe.") { Decimals=0 },
+        new(new[]{ "GEN_TYPE" }, System, "Generator type", "Onboard generator type.") { Decimals=0 },
+        new(new[]{ "ICE_ENABLE" }, System, "ICE enable", "Internal combustion engine support.") { Decimals=0 },
+        new(new[]{ "INITIAL_MODE" }, System, "Initial mode", "Flight mode entered at boot.") { Decimals=0 },
+        new(new[]{ "INS_GYRO_FILTER" }, System, "Gyro filter", "Gyro low-pass filter cutoff.") { Units="Hz", Decimals=0, Min=0, Max=256 },
+        new(new[]{ "INS_ACCEL_FILTER" }, System, "Accel filter", "Accelerometer low-pass filter cutoff.") { Units="Hz", Decimals=0, Min=0, Max=256 },
+        new(new[]{ "DID_ENABLE" }, System, "Remote ID", "Remote ID (DroneID) enable.") { Decimals=0 },
+        new(new[]{ "KFF_RDDRMIX" }, System, "Rudder mix", "Roll-to-rudder feed-forward mix.") { Decimals=2, Min=0, Max=1 },
+        new(new[]{ "KFF_THR2PTCH" }, System, "Throttle→pitch FF", "Throttle-to-pitch feed-forward.") { Decimals=2, Min=-5, Max=5 },
+        new(new[]{ "LEVEL_ROLL_LIMIT" }, System, "Level roll limit", "Roll limit while wings-level (takeoff/land).") { Units="deg", Decimals=0, Min=0, Max=45 },
+        new(new[]{ "LGR_ENABLE" }, System, "Landing gear", "Retractable landing gear enable.") { Decimals=0 },
+        new(new[]{ "MIS_OPTIONS" }, System, "Mission options", "Mission options bitmask.") { Decimals=0 },
+        new(new[]{ "MIS_RESTART" }, System, "Mission restart", "Restart mission from first item on mode entry.") { Decimals=0 },
+        new(new[]{ "PUP_ENABLE" }, System, "Power-up checks", "Power-up arming checks.") { Decimals=0 },
+
+        // ── Navigation (L1) ──────────────────────────────────────────
+        new(new[]{ "NAVL1_PERIOD" }, Nav, "L1 period", "Navigation controller period (lower = tighter).") { Units="s", Decimals=1, Min=1, Max=60 },
+        new(new[]{ "NAVL1_DAMPING" }, Nav, "L1 damping", "Navigation controller damping.") { Decimals=2, Min=0.6, Max=1 },
+        new(new[]{ "NAVL1_LIM_BANK" }, Nav, "L1 bank limit", "Navigation bank angle limit.") { Units="deg", Decimals=0, Min=0, Max=89 },
+        new(new[]{ "NAVL1_XTRACK_I" }, Nav, "L1 cross-track I", "Cross-track integrator gain.") { Decimals=3, Min=0, Max=0.1 },
+
+        // ── Pitch / Roll Tuning ──────────────────────────────────────
+        new(new[]{ "PTCH2SRV_RLL" }, Tuning, "Pitch-roll comp", "Pitch compensation for bank angle.") { Decimals=2, Min=0.7, Max=1.5 },
+        new(new[]{ "PTCH2SRV_RMAX_DN" }, Tuning, "Max pitch-down rate", "Maximum pitch-down rate.") { Units="deg/s", Decimals=0, Min=0, Max=100 },
+        new(new[]{ "PTCH2SRV_RMAX_UP" }, Tuning, "Max pitch-up rate", "Maximum pitch-up rate.") { Units="deg/s", Decimals=0, Min=0, Max=100 },
+        new(new[]{ "PTCH2SRV_TCONST" }, Tuning, "Pitch time const", "Pitch controller time constant.") { Units="s", Decimals=2, Min=0.4, Max=1 },
+        new(new[]{ "PTCH_LIM_MAX_DEG" }, Tuning, "Pitch up limit", "Maximum commanded nose-up pitch.") { Units="deg", Decimals=0, Min=0, Max=90 },
+        new(new[]{ "PTCH_LIM_MIN_DEG" }, Tuning, "Pitch down limit", "Maximum commanded nose-down pitch.") { Units="deg", Decimals=0, Min=-90, Max=0 },
+        new(new[]{ "PTCH_TRIM_DEG" }, Tuning, "Pitch trim", "Level-flight pitch trim.") { Units="deg", Decimals=1, Min=-45, Max=45 },
+        new(new[]{ "RLL2SRV_RMAX" }, Tuning, "Max roll rate", "Maximum roll rate.") { Units="deg/s", Decimals=0, Min=0, Max=180 },
+        new(new[]{ "RLL2SRV_TCONST" }, Tuning, "Roll time const", "Roll controller time constant.") { Units="s", Decimals=2, Min=0.4, Max=1 },
+        new(new[]{ "ROLL_LIMIT_DEG" }, Tuning, "Roll limit", "Maximum bank angle.") { Units="deg", Decimals=0, Min=0, Max=90 },
+
+        // ── TECS ─────────────────────────────────────────────────────
+        new(new[]{ "TECS_TIME_CONST" }, Tecs, "Time constant", "Energy controller response time.") { Units="s", Decimals=1, Min=3, Max=10 },
+        new(new[]{ "TECS_SPDWEIGHT" }, Tecs, "Speed weight", "Balance of pitch to speed vs height (0-2).") { Decimals=1, Min=0, Max=2 },
+        new(new[]{ "TECS_PTCH_DAMP" }, Tecs, "Pitch damping", "TECS pitch damping.") { Decimals=2, Min=0.1, Max=1 },
+        new(new[]{ "TECS_RLL2THR" }, Tecs, "Roll→throttle FF", "Throttle added for bank angle.") { Decimals=0, Min=5, Max=30 },
+        new(new[]{ "TECS_CLMB_MAX" }, Tecs, "Max climb rate", "Max climb rate at full throttle.") { Units="m/s", Decimals=1, Min=0.1, Max=20 },
+        new(new[]{ "TECS_SINK_MAX" }, Tecs, "Max sink rate", "Max commanded sink rate.") { Units="m/s", Decimals=1, Min=0, Max=20 },
+        new(new[]{ "TECS_SINK_MIN" }, Tecs, "Min sink rate", "Min sink rate at idle throttle.") { Units="m/s", Decimals=1, Min=0.1, Max=10 },
+
+        // ── Takeoff ──────────────────────────────────────────────────
+        new(new[]{ "TKOFF_ACCEL_CNT" }, Takeoff, "Accel event count", "Accel events to trigger launch.") { Decimals=0, Min=1, Max=10 },
+        new(new[]{ "TKOFF_ALT" }, Takeoff, "Takeoff altitude", "Target altitude for auto takeoff.") { Units="m", Decimals=0, Min=0, Max=200 },
+        new(new[]{ "TKOFF_DIST" }, Takeoff, "Takeoff distance", "Distance to fly during takeoff.") { Units="m", Decimals=0, Min=0, Max=500 },
+        new(new[]{ "TKOFF_LVL_ALT" }, Takeoff, "Level-off altitude", "Altitude to hold wings level to.") { Units="m", Decimals=0, Min=0, Max=50 },
+        new(new[]{ "TKOFF_LVL_PITCH" }, Takeoff, "Level pitch", "Pitch target during initial climb.") { Units="deg", Decimals=0, Min=0, Max=30 },
+        new(new[]{ "TKOFF_OPTIONS" }, Takeoff, "Takeoff options", "Takeoff options bitmask.") { Decimals=0 },
+        new(new[]{ "TKOFF_THR_DELAY" }, Takeoff, "Throttle delay", "Delay before throttle up (0.1 s units).") { Decimals=0, Min=0, Max=127 },
+        new(new[]{ "TKOFF_THR_IDLE" }, Takeoff, "Idle throttle", "Idle throttle before launch.") { Units="%", Decimals=0, Min=0, Max=100 },
+        new(new[]{ "TKOFF_THR_MAX" }, Takeoff, "Max throttle", "Max throttle during takeoff.") { Units="%", Decimals=0, Min=0, Max=100 },
+        new(new[]{ "TKOFF_THR_MAX_T" }, Takeoff, "Max throttle time", "Time to hold max throttle.") { Units="s", Decimals=0, Min=0, Max=10 },
+        new(new[]{ "TKOFF_THR_MIN" }, Takeoff, "Min throttle", "Min throttle during takeoff.") { Units="%", Decimals=0, Min=0, Max=100 },
+        new(new[]{ "TKOFF_THR_MINACC" }, Takeoff, "Min launch accel", "Acceleration to detect hand/bungee launch.") { Units="m/s²", Decimals=0, Min=0, Max=30 },
+        new(new[]{ "TKOFF_THR_MINSPD" }, Takeoff, "Min launch speed", "Speed to detect launch.") { Units="m/s", Decimals=0, Min=0, Max=30 },
+        new(new[]{ "TKOFF_THR_SLEW" }, Takeoff, "Throttle slew", "Throttle slew during takeoff (-1=default).") { Units="%/s", Decimals=0, Min=-1, Max=500 },
+        new(new[]{ "TKOFF_TIMEOUT" }, Takeoff, "Takeoff timeout", "Abort takeoff if not airborne in time.") { Units="s", Decimals=0, Min=0, Max=120 },
+
+        // ── RTL & Waypoints ──────────────────────────────────────────
+        new(new[]{ "RTL_ALTITUDE" }, RtlWp, "RTL altitude", "Return-to-launch altitude.") { Units="m", Decimals=0 },
+        new(new[]{ "RTL_AUTOLAND" }, RtlWp, "RTL autoland", "Auto-land / DO_LAND_START behaviour on RTL.") { Decimals=0 },
+        new(new[]{ "RTL_CLIMB_MIN" }, RtlWp, "RTL min climb", "Minimum climb before turning home.") { Units="m", Decimals=0, Min=0, Max=30 },
+        new(new[]{ "RTL_RADIUS" }, RtlWp, "RTL radius", "Loiter radius at home (sign = direction).") { Units="m", Decimals=0, Min=-32767, Max=32767 },
+        new(new[]{ "WP_RADIUS" }, RtlWp, "Waypoint radius", "Distance at which a waypoint is reached.") { Units="m", Decimals=0, Min=1, Max=32767 },
+        new(new[]{ "WP_MAX_RADIUS" }, RtlWp, "WP max radius", "Max acceptance radius override.") { Units="m", Decimals=0, Min=0, Max=32767 },
+        new(new[]{ "WP_LOITER_RAD" }, RtlWp, "Loiter radius", "Default loiter radius (sign = direction).") { Units="m", Decimals=0, Min=-32767, Max=32767 },
+
+        // ── Throttle ─────────────────────────────────────────────────
+        new(new[]{ "THR_MIN" }, Throttle, "Throttle min", "Minimum throttle.") { Units="%", Decimals=0, Min=-100, Max=100 },
+        new(new[]{ "THR_MAX" }, Throttle, "Throttle max", "Maximum throttle.") { Units="%", Decimals=0, Min=0, Max=100 },
+        new(new[]{ "TRIM_THROTTLE" }, Throttle, "Cruise throttle", "Base throttle at cruise airspeed.") { Units="%", Decimals=0, Min=0, Max=100 },
+        new(new[]{ "THR_SLEWRATE" }, Throttle, "Throttle slew", "Max throttle change per second (0=off).") { Units="%/s", Decimals=0, Min=0, Max=500 },
+        new(new[]{ "THR_FAILSAFE" }, Throttle, "Throttle failsafe", "Enable throttle-based RC failsafe.") { Decimals=0 },
+        new(new[]{ "THR_FS_VALUE" }, Throttle, "Throttle FS PWM", "PWM below which failsafe triggers.") { Units="PWM", Decimals=0, Min=925, Max=2200 },
+
+        // ── QuadPlane ────────────────────────────────────────────────
+        new(new[]{ "Q_ENABLE" }, Quad, "QuadPlane enable", "Enable VTOL/QuadPlane (needs reboot).") { Decimals=0 },
+        new(new[]{ "Q_A_ANGLE_MAX" }, Quad, "Max lean angle", "Max lean angle in VTOL modes.") { Units="cdeg", Decimals=0 },
+        new(new[]{ "Q_ASSIST_SPEED" }, Quad, "Assist speed", "Airspeed below which VTOL assists.") { Units="m/s", Decimals=1, Min=0, Max=100 },
+        new(new[]{ "Q_ASSIST_ANGLE" }, Quad, "Assist angle", "Attitude error angle that triggers assist.") { Units="deg", Decimals=0, Min=0, Max=90 },
+        new(new[]{ "Q_A_ACCEL_P_MAX" }, Quad, "Max pitch accel", "Max angular pitch acceleration.") { Units="cdeg/s²", Decimals=0 },
+        new(new[]{ "Q_A_ACCEL_R_MAX" }, Quad, "Max roll accel", "Max angular roll acceleration.") { Units="cdeg/s²", Decimals=0 },
+        new(new[]{ "Q_A_ACCEL_Y_MAX" }, Quad, "Max yaw accel", "Max angular yaw acceleration.") { Units="cdeg/s²", Decimals=0 },
+        new(new[]{ "Q_A_RATE_P_MAX" }, Quad, "Max pitch rate", "Max pitch rate in VTOL.") { Units="deg/s", Decimals=0 },
+        new(new[]{ "Q_A_RATE_R_MAX" }, Quad, "Max roll rate", "Max roll rate in VTOL.") { Units="deg/s", Decimals=0 },
+        new(new[]{ "Q_A_RATE_Y_MAX" }, Quad, "Max yaw rate", "Max yaw rate in VTOL.") { Units="deg/s", Decimals=0 },
+        new(new[]{ "Q_A_THR_MIX_MAX" }, Quad, "Throttle mix max", "Max attitude-vs-throttle priority.") { Decimals=2, Min=0.5, Max=0.9 },
+        new(new[]{ "Q_FRAME_CLASS" }, Quad, "Frame class", "VTOL frame class.") { Decimals=0 },
+        new(new[]{ "Q_FRAME_TYPE" }, Quad, "Frame type", "VTOL frame type/layout.") { Decimals=0 },
+        new(new[]{ "Q_LAND_FINAL_ALT" }, Quad, "Land final alt", "Altitude to begin final landing stage.") { Units="m", Decimals=1, Min=0.5, Max=50 },
+        new(new[]{ "Q_LAND_FINAL_SPD" }, Quad, "Land final speed", "Descent speed for final landing.") { Units="m/s", Decimals=2, Min=0.3, Max=2 },
+        new(new[]{ "Q_LOIT_ANG_MAX" }, Quad, "Loiter angle max", "Max lean angle in VTOL loiter.") { Units="deg", Decimals=0, Min=0, Max=45 },
+        new(new[]{ "Q_LOIT_BRK_ACC_M" }, Quad, "Loiter brake accel", "Loiter braking acceleration.") { Units="m/s²", Decimals=2, Min=0.25, Max=2.5 },
+        new(new[]{ "Q_LOIT_BRK_JRK_M" }, Quad, "Loiter brake jerk", "Loiter braking jerk limit.") { Units="m/s³", Decimals=0, Min=5, Max=50 },
+        new(new[]{ "Q_LOIT_SPEED_MS" }, Quad, "Loiter speed", "Max horizontal loiter speed.") { Units="m/s", Decimals=2, Min=0.2, Max=35 },
+        new(new[]{ "Q_M_BAT_IDX" }, Quad, "Motor batt index", "Battery monitor used for motor comp.") { Decimals=0 },
+        new(new[]{ "Q_M_BAT_VOLT_MAX" }, Quad, "Motor batt V max", "Voltage for full thrust scaling.") { Units="V", Decimals=1, Min=6, Max=53 },
+        new(new[]{ "Q_M_BAT_VOLT_MIN" }, Quad, "Motor batt V min", "Voltage for min thrust scaling.") { Units="V", Decimals=1, Min=6, Max=42 },
+        new(new[]{ "Q_M_THST_EXPO" }, Quad, "Thrust expo", "Motor thrust curve expo.") { Decimals=2, Min=-1, Max=1 },
+        new(new[]{ "Q_M_THST_HOVER" }, Quad, "Hover thrust", "Hover throttle (learned).") { Decimals=4, Min=0.125, Max=0.6875 },
+        new(new[]{ "Q_M_YAW_HEADROOM" }, Quad, "Yaw headroom", "PWM reserved for yaw control.") { Decimals=0, Min=0, Max=500 },
+        new(new[]{ "Q_P_JERK_NE" }, Quad, "Horizontal jerk", "Horizontal jerk limit.") { Units="m/s³", Decimals=0, Min=1, Max=50 },
+        new(new[]{ "Q_P_NE_POS_P" }, Quad, "Position P", "Horizontal position P gain.") { Decimals=2, Min=0.5, Max=4 },
+        new(new[]{ "Q_P_NE_VEL_D" }, Quad, "Velocity D", "Horizontal velocity D gain.") { Decimals=3, Min=0, Max=1 },
+        new(new[]{ "Q_P_NE_VEL_I" }, Quad, "Velocity I", "Horizontal velocity I gain.") { Decimals=2, Min=0.1, Max=10 },
+        new(new[]{ "Q_P_NE_VEL_P" }, Quad, "Velocity P", "Horizontal velocity P gain.") { Decimals=2, Min=0.1, Max=10 },
+        new(new[]{ "Q_RTL_ALT" }, Quad, "Q RTL altitude", "QuadPlane RTL altitude.") { Units="m", Decimals=0, Min=1, Max=200 },
+        new(new[]{ "Q_THROTTLE_EXPO" }, Quad, "Throttle expo", "Manual throttle expo in VTOL.") { Decimals=2, Min=0, Max=1 },
+        new(new[]{ "Q_TRANS_DECEL" }, Quad, "Transition decel", "Deceleration for FW→VTOL transition.") { Units="m/s²", Decimals=1, Min=0.2, Max=5 },
+        new(new[]{ "Q_TRAN_PIT_MAX" }, Quad, "Transition pitch max", "Max pitch during transition.") { Units="deg", Decimals=0, Min=0, Max=30 },
+        new(new[]{ "Q_PILOT_SPD_UP" }, Quad, "Pilot climb speed", "Max pilot-commanded climb rate.") { Units="m/s", Decimals=1, Min=0.5, Max=5 },
+        new(new[]{ "Q_VFWD_ALT" }, Quad, "Fwd throttle alt", "Altitude below which fwd throttle disabled.") { Units="m", Decimals=0, Min=0, Max=10 },
+        new(new[]{ "Q_VFWD_GAIN" }, Quad, "Fwd throttle gain", "Forward throttle gain in VTOL.") { Decimals=2, Min=0, Max=0.5 },
+        new(new[]{ "Q_WVANE_ENABLE" }, Quad, "Weathervane enable", "Weathervaning enable.") { Decimals=0 },
+        new(new[]{ "Q_WVANE_GAIN" }, Quad, "Weathervane gain", "Weathervaning gain.") { Decimals=1, Min=0.5, Max=4 },
+        new(new[]{ "Q_WVANE_ANG_MIN" }, Quad, "Weathervane min ang", "Min lean angle for weathervaning.") { Units="deg", Decimals=0, Min=0, Max=10 },
+        new(new[]{ "Q_WVANE_TAKEOFF" }, Quad, "Weathervane on tkoff", "Weathervane during takeoff.") { Decimals=0 },
+        new(new[]{ "Q_TRANSITION_MS" }, Quad, "Transition time", "Time to transition VTOL→FW.") { Units="ms", Decimals=0, Min=500, Max=30000 },
+        new(new[]{ "Q_BACKTRANS_MS" }, Quad, "Back-transition time", "FW→VTOL back-transition time.") { Units="ms", Decimals=0, Min=0, Max=10000 },
+        new(new[]{ "Q_BCK_PIT_LIM" }, Quad, "Back-trans pitch lim", "Pitch limit during back-transition.") { Units="deg", Decimals=0, Min=0, Max=15 },
+
+        // ── QuadPlane PIDs (Q_A_RAT_*) ───────────────────────────────
+        new(new[]{ "Q_A_RAT_PIT_P" }, QuadPid, "Pitch rate P", "VTOL pitch rate P.") { Decimals=3, Min=0.01, Max=0.5 },
+        new(new[]{ "Q_A_RAT_PIT_I" }, QuadPid, "Pitch rate I", "VTOL pitch rate I.") { Decimals=3, Min=0.01, Max=2 },
+        new(new[]{ "Q_A_RAT_PIT_D" }, QuadPid, "Pitch rate D", "VTOL pitch rate D.") { Decimals=4, Min=0, Max=0.05 },
+        new(new[]{ "Q_A_RAT_PIT_FF" }, QuadPid, "Pitch rate FF", "VTOL pitch rate feed-forward.") { Decimals=3, Min=0, Max=0.5 },
+        new(new[]{ "Q_A_RAT_PIT_IMAX" }, QuadPid, "Pitch I max", "VTOL pitch integrator limit.") { Decimals=2, Min=0, Max=1 },
+        new(new[]{ "Q_A_RAT_PIT_FLTD" }, QuadPid, "Pitch D filter", "Pitch D-term filter.") { Units="Hz", Decimals=0, Min=5, Max=100 },
+        new(new[]{ "Q_A_RAT_PIT_FLTE" }, QuadPid, "Pitch E filter", "Pitch error filter.") { Units="Hz", Decimals=0, Min=0, Max=100 },
+        new(new[]{ "Q_A_RAT_PIT_FLTT" }, QuadPid, "Pitch T filter", "Pitch target filter.") { Units="Hz", Decimals=0, Min=5, Max=100 },
+        new(new[]{ "Q_A_RAT_PIT_SMAX" }, QuadPid, "Pitch slew max", "Pitch slew-rate limit.") { Decimals=0, Min=0, Max=200 },
+
+        new(new[]{ "Q_A_RAT_RLL_P" }, QuadPid, "Roll rate P", "VTOL roll rate P.") { Decimals=3, Min=0.01, Max=0.5 },
+        new(new[]{ "Q_A_RAT_RLL_I" }, QuadPid, "Roll rate I", "VTOL roll rate I.") { Decimals=3, Min=0.01, Max=2 },
+        new(new[]{ "Q_A_RAT_RLL_D" }, QuadPid, "Roll rate D", "VTOL roll rate D.") { Decimals=4, Min=0, Max=0.05 },
+        new(new[]{ "Q_A_RAT_RLL_FF" }, QuadPid, "Roll rate FF", "VTOL roll rate feed-forward.") { Decimals=3, Min=0, Max=0.5 },
+        new(new[]{ "Q_A_RAT_RLL_IMAX" }, QuadPid, "Roll I max", "VTOL roll integrator limit.") { Decimals=2, Min=0, Max=1 },
+        new(new[]{ "Q_A_RAT_RLL_FLTD" }, QuadPid, "Roll D filter", "Roll D-term filter.") { Units="Hz", Decimals=0, Min=5, Max=100 },
+        new(new[]{ "Q_A_RAT_RLL_FLTE" }, QuadPid, "Roll E filter", "Roll error filter.") { Units="Hz", Decimals=0, Min=0, Max=100 },
+        new(new[]{ "Q_A_RAT_RLL_FLTT" }, QuadPid, "Roll T filter", "Roll target filter.") { Units="Hz", Decimals=0, Min=5, Max=100 },
+        new(new[]{ "Q_A_RAT_RLL_SMAX" }, QuadPid, "Roll slew max", "Roll slew-rate limit.") { Decimals=0, Min=0, Max=200 },
+
+        new(new[]{ "Q_A_RAT_YAW_P" }, QuadPid, "Yaw rate P", "VTOL yaw rate P.") { Decimals=3, Min=0.1, Max=2.5 },
+        new(new[]{ "Q_A_RAT_YAW_I" }, QuadPid, "Yaw rate I", "VTOL yaw rate I.") { Decimals=3, Min=0.01, Max=1 },
+        new(new[]{ "Q_A_RAT_YAW_D" }, QuadPid, "Yaw rate D", "VTOL yaw rate D.") { Decimals=4, Min=0, Max=0.02 },
+        new(new[]{ "Q_A_RAT_YAW_FF" }, QuadPid, "Yaw rate FF", "VTOL yaw rate feed-forward.") { Decimals=3, Min=0, Max=0.5 },
+        new(new[]{ "Q_A_RAT_YAW_IMAX" }, QuadPid, "Yaw I max", "VTOL yaw integrator limit.") { Decimals=2, Min=0, Max=1 },
+        new(new[]{ "Q_A_RAT_YAW_FLTD" }, QuadPid, "Yaw D filter", "Yaw D-term filter.") { Units="Hz", Decimals=0, Min=5, Max=50 },
+        new(new[]{ "Q_A_RAT_YAW_FLTE" }, QuadPid, "Yaw E filter", "Yaw error filter.") { Units="Hz", Decimals=0, Min=0, Max=20 },
+        new(new[]{ "Q_A_RAT_YAW_FLTT" }, QuadPid, "Yaw T filter", "Yaw target filter.") { Units="Hz", Decimals=0, Min=1, Max=50 },
+        new(new[]{ "Q_A_RAT_YAW_SMAX" }, QuadPid, "Yaw slew max", "Yaw slew-rate limit.") { Decimals=0, Min=0, Max=200 },
+    };
+}

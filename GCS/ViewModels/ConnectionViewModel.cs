@@ -1,3 +1,4 @@
+using GCS.Core.Settings;
 using GCS.Core.Transport;
 using System;
 using System.Collections.ObjectModel;
@@ -28,6 +29,32 @@ public class ConnectionViewModel : ViewModelBase
     };
 
     public ObservableCollection<string> AvailableSerialPorts { get; } = new();
+
+    /// <summary>Recently used connections (most recent first), from persisted settings.</summary>
+    public ObservableCollection<ConnectionProfile> RecentConnections { get; } = new();
+
+    private ConnectionProfile? _selectedProfile;
+    /// <summary>Bound to the "recent" dropdown; applying it fills the connection fields.</summary>
+    public ConnectionProfile? SelectedProfile
+    {
+        get => _selectedProfile;
+        set { if (SetProperty(ref _selectedProfile, value)) ApplyProfile(value); }
+    }
+
+    /// <summary>Auto-reconnect on link loss (persisted).</summary>
+    public bool AutoReconnect
+    {
+        get => SettingsStore.Current.AutoReconnect;
+        set
+        {
+            if (SettingsStore.Current.AutoReconnect != value)
+            {
+                SettingsStore.Current.AutoReconnect = value;
+                SettingsStore.Save();
+                OnPropertyChanged();
+            }
+        }
+    }
 
     public ObservableCollection<int> BaudRates { get; } = new()
     {
@@ -144,6 +171,7 @@ public class ConnectionViewModel : ViewModelBase
     public ICommand ConnectCommand { get; }
     public ICommand DisconnectCommand { get; }
     public ICommand RefreshPortsCommand { get; }
+    public ICommand ApplyProfileCommand { get; }
 
     // Events
     public event Action<TransportConfig>? ConnectRequested;
@@ -154,8 +182,43 @@ public class ConnectionViewModel : ViewModelBase
         ConnectCommand = new RelayCommand(OnConnect, () => !IsConnected && !IsConnecting);
         DisconnectCommand = new RelayCommand(OnDisconnect, () => IsConnected && !IsConnecting);
         RefreshPortsCommand = new RelayCommand(RefreshSerialPorts, () => CanEditSettings);
+        ApplyProfileCommand = new RelayCommand<ConnectionProfile>(ApplyProfile, _ => CanEditSettings);
 
         RefreshSerialPorts();
+        LoadRecentConnections();
+        if (RecentConnections.Count > 0) ApplyProfile(RecentConnections[0]); // restore last used
+    }
+
+    private void LoadRecentConnections()
+    {
+        RecentConnections.Clear();
+        foreach (var p in SettingsStore.Current.RecentConnections)
+            RecentConnections.Add(p);
+    }
+
+    /// <summary>Populate the connection fields from a saved profile.</summary>
+    public void ApplyProfile(ConnectionProfile? p)
+    {
+        if (p == null) return;
+        switch (p.Kind)
+        {
+            case TransportKind.Serial:
+                SelectedTransportType = "Serial";
+                if (!string.IsNullOrEmpty(p.PortName)) SelectedSerialPort = p.PortName;
+                BaudRate = p.BaudRate;
+                break;
+            case TransportKind.Tcp:
+                SelectedTransportType = "TCP";
+                TcpHost = p.Host;
+                TcpPort = p.Port;
+                break;
+            case TransportKind.Udp:
+                SelectedTransportType = "UDP";
+                UdpLocalPort = p.LocalPort;
+                UdpRemoteHost = p.RemoteHost;
+                UdpRemotePort = p.RemotePort;
+                break;
+        }
     }
 
     private void RefreshSerialPorts()

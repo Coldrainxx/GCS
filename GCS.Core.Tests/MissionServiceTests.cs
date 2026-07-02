@@ -51,10 +51,12 @@ public class MissionServiceTests
 
         var items = new[] { Wp(0, 10, 20, 100), Wp(1, 11, 21, 110) };
 
-        await svc.UploadAsync(items, CancellationToken.None);   // clear + count
+        // UploadAsync now awaits completion, so drive the FC side concurrently.
+        var uploadTask = svc.UploadAsync(items, CancellationToken.None);
         await svc.OnMissionRequest(0, CancellationToken.None);  // item 0
         await svc.OnMissionRequest(1, CancellationToken.None);  // item 1
         svc.OnMissionAck(0);                                    // accepted
+        await uploadTask;
 
         Assert.Equal(MissionTransferState.Completed, states[^1].State);
         Assert.True(sender.Sent.Count >= 4); // clear, count, item0, item1
@@ -67,8 +69,9 @@ public class MissionServiceTests
         var states = new List<MissionState>();
         svc.MissionStateChanged += states.Add;
 
-        await svc.UploadAsync(new[] { Wp(0, 10, 20, 100) }, CancellationToken.None);
+        var uploadTask = svc.UploadAsync(new[] { Wp(0, 10, 20, 100) }, CancellationToken.None);
         svc.OnMissionAck(3); // MAV_MISSION_NO_SPACE / item index too large
+        await uploadTask;
 
         Assert.Equal(MissionTransferState.Failed, states[^1].State);
         Assert.NotNull(states[^1].ErrorMessage);

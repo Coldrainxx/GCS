@@ -17,20 +17,28 @@ public sealed class MissionService : IMissionService
     // Guards the whole transfer state machine. Upload/Download are driven from
     // the UI thread while the On* callbacks fire on the transport thread, so
     // every field below is touched from multiple threads. Packets are built
-    // under the lock (which also bumps _seq) but always sent outside it.
+    // under the lock but always sent outside it.
     private readonly object _gate = new();
 
     // Download state
     private List<MissionItem>? _downloaded;
     private ushort _expectedCount;
     private TaskCompletionSource<IReadOnlyList<MissionItem>>? _downloadTcs;
-    private bool _isDownloading = false;
+    private bool _isDownloading;
+    private DateTime _lastRxUtc;
+    private int _downloadRetries;
 
     // Upload state
     private IReadOnlyList<MissionItem>? _uploadItems;
-    private bool _isUploading = false;
+    private bool _isUploading;
     private int _lastUploadedSeq = -1;
-    private byte _seq;
+    private TaskCompletionSource<bool>? _uploadTcs;
+    private DateTime _lastUploadActivityUtc;
+
+    private const double IdleTimeoutSec = 8.0;      // give up if the vehicle goes silent
+    private const int PollMs = 1000;                // watchdog tick
+    private const double ItemRetryAfterSec = 1.5;   // re-request a missing download item
+    private const int MaxRetries = 6;               // consecutive retries before failing
 
     public event Action<MissionState>? MissionStateChanged;
 
@@ -40,6 +48,8 @@ public sealed class MissionService : IMissionService
         _backend = backend;
     }
 
+    // ── Upload ───────────────────────────────────────────────────────
+
     public async Task UploadAsync(IReadOnlyList<MissionItem> items, CancellationToken ct)
     {
         var sys = _backend.SystemId;
@@ -47,10 +57,10 @@ public sealed class MissionService : IMissionService
 
         byte[] clearPacket, countPacket;
         TaskCompletionSource<IReadOnlyList<MissionItem>>? cancelledDownload;
+        TaskCompletionSource<bool> uploadTcs;
 
         lock (_gate)
         {
-            // Cancel any ongoing download.
             _isDownloading = false;
             cancelledDownload = _downloadTcs;
             _downloadTcs = null;
@@ -58,24 +68,56 @@ public sealed class MissionService : IMissionService
             _uploadItems = items;
             _isUploading = true;
             _lastUploadedSeq = -1;
-            _seq = 0;
+            _lastUploadActivityUtc = DateTime.UtcNow;
+            _uploadTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            uploadTcs = _uploadTcs;
 
-            clearPacket = MissionClearAllCommand.Create(sys, comp, ref _seq);
-            countPacket = MissionCountCommand.Create(sys, comp, (ushort)items.Count, ref _seq);
+            clearPacket = MissionClearAllCommand.Create(sys, comp);
+            countPacket = MissionCountCommand.Create(sys, comp, (ushort)items.Count);
         }
 
         cancelledDownload?.TrySetCanceled();
 
         Debug.WriteLine($"[MissionService] Starting upload of {items.Count} items to {sys}:{comp}");
-
-        MissionStateChanged?.Invoke(
-            new MissionState(MissionTransferState.Uploading, 0, items.Count, null));
+        MissionStateChanged?.Invoke(new MissionState(MissionTransferState.Uploading, 0, items.Count, null));
 
         await _sender.SendAsync(clearPacket, ct);
         await Task.Delay(200, ct);
         await _sender.SendAsync(countPacket, ct);
-
         Debug.WriteLine($"[MissionService] Sent MISSION_COUNT={items.Count}");
+
+        // Idle watchdog: the FC drives the transfer by requesting items; if it
+        // goes silent mid-upload, fail instead of leaving the UI stuck.
+        while (true)
+        {
+            var completed = await Task.WhenAny(uploadTcs.Task, Task.Delay(PollMs, ct));
+            if (completed == uploadTcs.Task)
+            {
+                await uploadTcs.Task; // success (throws if it faulted)
+                return;
+            }
+
+            bool timedOut;
+            lock (_gate)
+            {
+                if (!_isUploading) return; // resolved by an ack already
+                timedOut = (DateTime.UtcNow - _lastUploadActivityUtc).TotalSeconds > IdleTimeoutSec;
+                if (timedOut)
+                {
+                    _isUploading = false;
+                    _uploadItems = null;
+                }
+            }
+
+            if (timedOut)
+            {
+                Debug.WriteLine("[MissionService] Upload idle timeout");
+                MissionStateChanged?.Invoke(
+                    new MissionState(MissionTransferState.Failed, 0, 0, "Upload timed out - no response from vehicle"));
+                uploadTcs.TrySetResult(false);
+                return;
+            }
+        }
     }
 
     public async Task OnMissionRequest(ushort seq, CancellationToken ct)
@@ -100,9 +142,9 @@ public sealed class MissionService : IMissionService
                 return;
             }
 
-            var item = _uploadItems[seq];
-            packet = MissionItemIntCommand.Create(item, sys, comp, ref _seq);
+            packet = MissionItemIntCommand.Create(_uploadItems[seq], sys, comp);
             _lastUploadedSeq = seq;
+            _lastUploadActivityUtc = DateTime.UtcNow;
             totalCount = _uploadItems.Count;
         }
 
@@ -112,6 +154,8 @@ public sealed class MissionService : IMissionService
         MissionStateChanged?.Invoke(
             new MissionState(MissionTransferState.Uploading, seq + 1, totalCount, null));
     }
+
+    // ── Download ─────────────────────────────────────────────────────
 
     public async Task<IReadOnlyList<MissionItem>> DownloadAsync(CancellationToken ct)
     {
@@ -123,42 +167,70 @@ public sealed class MissionService : IMissionService
 
         lock (_gate)
         {
-            // Cancel any ongoing upload.
             _isUploading = false;
             _uploadItems = null;
 
-            // Reset download state.
             _downloaded = new List<MissionItem>();
             _isDownloading = true;
             _expectedCount = 0;
+            _downloadRetries = 0;
+            _lastRxUtc = DateTime.UtcNow;
 
             _downloadTcs = new TaskCompletionSource<IReadOnlyList<MissionItem>>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             tcs = _downloadTcs;
 
-            packet = MissionRequestListCommand.Create(sys, comp, ref _seq);
+            packet = MissionRequestListCommand.Create(sys, comp);
         }
 
         Debug.WriteLine($"[MissionService] Starting download from {sys}:{comp}");
-
-        MissionStateChanged?.Invoke(
-            new MissionState(MissionTransferState.Downloading, 0, 0, null));
-
+        MissionStateChanged?.Invoke(new MissionState(MissionTransferState.Downloading, 0, 0, null));
         await _sender.SendAsync(packet, ct);
 
-        var timeoutTask = Task.Delay(10000, ct);
-        var completedTask = await Task.WhenAny(tcs.Task, timeoutTask);
-
-        if (completedTask == timeoutTask)
+        // Watchdog: re-request the item (or the list) we're waiting on if the
+        // vehicle goes quiet, so a single dropped packet doesn't fail the download.
+        while (true)
         {
-            lock (_gate) _isDownloading = false;
-            Debug.WriteLine($"[MissionService] Download timeout!");
-            MissionStateChanged?.Invoke(
-                new MissionState(MissionTransferState.Failed, 0, 0, "Download timeout"));
-            return new List<MissionItem>();
-        }
+            var completed = await Task.WhenAny(tcs.Task, Task.Delay(PollMs, ct));
+            if (completed == tcs.Task)
+                return await tcs.Task;
 
-        return await tcs.Task;
+            byte[]? retry = null;
+            bool giveUp = false;
+            lock (_gate)
+            {
+                if (!_isDownloading) continue; // will resolve on next loop
+                if ((DateTime.UtcNow - _lastRxUtc).TotalSeconds >= ItemRetryAfterSec)
+                {
+                    if (++_downloadRetries > MaxRetries)
+                    {
+                        giveUp = true;
+                        _isDownloading = false;
+                    }
+                    else
+                    {
+                        retry = _expectedCount == 0
+                            ? MissionRequestListCommand.Create(sys, comp)
+                            : MissionRequestIntCommand.Create((ushort)_downloaded!.Count, sys, comp);
+                    }
+                }
+            }
+
+            if (giveUp)
+            {
+                Debug.WriteLine("[MissionService] Download timeout");
+                MissionStateChanged?.Invoke(
+                    new MissionState(MissionTransferState.Failed, 0, 0, "Download timed out - no response from vehicle"));
+                tcs.TrySetResult(new List<MissionItem>());
+                return new List<MissionItem>();
+            }
+
+            if (retry != null)
+            {
+                Debug.WriteLine("[MissionService] Re-requesting missing mission data");
+                await _sender.SendAsync(retry, ct);
+            }
+        }
     }
 
     public async Task OnMissionCount(ushort count, CancellationToken ct)
@@ -179,6 +251,8 @@ public sealed class MissionService : IMissionService
             }
 
             _expectedCount = count;
+            _lastRxUtc = DateTime.UtcNow;
+            _downloadRetries = 0;
 
             if (count == 0)
             {
@@ -188,18 +262,16 @@ public sealed class MissionService : IMissionService
             }
             else
             {
-                requestPacket = MissionRequestIntCommand.Create(0, sys, comp, ref _seq);
+                requestPacket = MissionRequestIntCommand.Create(0, sys, comp);
             }
         }
 
-        MissionStateChanged?.Invoke(
-            new MissionState(MissionTransferState.Downloading, 0, count, null));
+        MissionStateChanged?.Invoke(new MissionState(MissionTransferState.Downloading, 0, count, null));
 
         if (emptyMission)
         {
             Debug.WriteLine($"[MissionService] No mission items on vehicle");
-            MissionStateChanged?.Invoke(
-                new MissionState(MissionTransferState.Completed, 0, 0, null));
+            MissionStateChanged?.Invoke(new MissionState(MissionTransferState.Completed, 0, 0, null));
             emptyTcs?.TrySetResult(new List<MissionItem>());
             return;
         }
@@ -227,17 +299,28 @@ public sealed class MissionService : IMissionService
                 return;
             }
 
-            _downloaded!.Add(item);
+            // Only accept the next expected item; ignore duplicates/out-of-order
+            // (which can happen after a retry) but treat them as link activity.
+            if (item.Sequence != _downloaded!.Count)
+            {
+                Debug.WriteLine($"[MissionService] Ignoring item seq={item.Sequence}, expected {_downloaded.Count}");
+                _lastRxUtc = DateTime.UtcNow;
+                return;
+            }
+
+            _downloaded.Add(item);
+            _lastRxUtc = DateTime.UtcNow;
+            _downloadRetries = 0;
             receivedCount = _downloaded.Count;
             expected = _expectedCount;
 
             if (receivedCount < expected)
             {
-                packet = MissionRequestIntCommand.Create((ushort)receivedCount, sys, comp, ref _seq);
+                packet = MissionRequestIntCommand.Create((ushort)receivedCount, sys, comp);
             }
             else
             {
-                packet = MissionAckCommand.Create(sys, comp, 0, ref _seq);
+                packet = MissionAckCommand.Create(sys, comp, 0);
                 _isDownloading = false;
                 complete = true;
                 result = _downloaded;
@@ -246,7 +329,6 @@ public sealed class MissionService : IMissionService
         }
 
         Debug.WriteLine($"[MissionService] Received item {receivedCount}/{expected}");
-
         MissionStateChanged?.Invoke(
             new MissionState(MissionTransferState.Downloading, receivedCount, expected, null));
 
@@ -255,25 +337,25 @@ public sealed class MissionService : IMissionService
         if (complete)
         {
             Debug.WriteLine($"[MissionService] Download COMPLETE! {expected} items");
-            MissionStateChanged?.Invoke(
-                new MissionState(MissionTransferState.Completed, expected, expected, null));
+            MissionStateChanged?.Invoke(new MissionState(MissionTransferState.Completed, expected, expected, null));
             completeTcs?.TrySetResult(result!);
         }
     }
 
+    // ── Other commands ───────────────────────────────────────────────
+
     public async Task ClearAsync(CancellationToken ct)
     {
-        var sys = _backend.SystemId;
-        var comp = _backend.ComponentId;
-
-        byte[] packet;
-        lock (_gate)
-        {
-            packet = MissionClearAllCommand.Create(sys, comp, ref _seq);
-        }
-
+        var packet = MissionClearAllCommand.Create(_backend.SystemId, _backend.ComponentId);
         await _sender.SendAsync(packet, ct);
         Debug.WriteLine("[MissionService] Sent MISSION_CLEAR_ALL");
+    }
+
+    public async Task SetCurrentAsync(ushort seq, CancellationToken ct)
+    {
+        var packet = MissionSetCurrentCommand.Create(_backend.SystemId, _backend.ComponentId, seq);
+        await _sender.SendAsync(packet, ct);
+        Debug.WriteLine($"[MissionService] Sent MISSION_SET_CURRENT seq={seq}");
     }
 
     public void OnMissionAck(byte result)
@@ -282,7 +364,8 @@ public sealed class MissionService : IMissionService
         bool uploadComplete = false;
         bool failed = false;
         string? errorMsg = null;
-        TaskCompletionSource<IReadOnlyList<MissionItem>>? failedTcs = null;
+        TaskCompletionSource<IReadOnlyList<MissionItem>>? failedDownload = null;
+        TaskCompletionSource<bool>? uploadTcs = null;
 
         lock (_gate)
         {
@@ -295,6 +378,7 @@ public sealed class MissionService : IMissionService
                     _uploadItems = null;
                     _lastUploadedSeq = -1;
                     uploadComplete = true;
+                    uploadTcs = _uploadTcs;
                 }
             }
             else
@@ -304,7 +388,8 @@ public sealed class MissionService : IMissionService
                 _uploadItems = null;
                 failed = true;
                 errorMsg = MapError(result);
-                failedTcs = _downloadTcs;
+                failedDownload = _downloadTcs;
+                uploadTcs = _uploadTcs;
             }
         }
 
@@ -315,14 +400,15 @@ public sealed class MissionService : IMissionService
             Debug.WriteLine($"[MissionService] Upload COMPLETE!");
             MissionStateChanged?.Invoke(
                 new MissionState(MissionTransferState.Completed, uploadedCount, uploadedCount, null));
+            uploadTcs?.TrySetResult(true);
         }
 
         if (failed)
         {
             Debug.WriteLine($"[MissionService] Error: {errorMsg}");
-            MissionStateChanged?.Invoke(
-                new MissionState(MissionTransferState.Failed, 0, 0, errorMsg));
-            failedTcs?.TrySetException(new Exception(errorMsg));
+            MissionStateChanged?.Invoke(new MissionState(MissionTransferState.Failed, 0, 0, errorMsg));
+            failedDownload?.TrySetException(new Exception(errorMsg));
+            uploadTcs?.TrySetResult(false);
         }
     }
 

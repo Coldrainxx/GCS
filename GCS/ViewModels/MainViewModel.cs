@@ -7,9 +7,11 @@ using GCS.Core.Mavlink.Messages;
 using GCS.Core.Mavlink.Tx;
 using GCS.Core.Mission;
 using GCS.Core.Preflight;
+using GCS.Core.Settings;
 using GCS.Core.State;
 using GCS.Core.Transport;
 using GCS.Infrastructure;
+using GCS.Notifications;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -29,6 +31,9 @@ public class MainViewModel : ViewModelBase, IDisposable
     private VehicleSession? _session;
 
     private bool _disposed;
+    private TransportConfig? _lastConfig;
+    private volatile bool _userDisconnect;
+    private bool _reconnecting;
 
     // ═══════════════════════════════════════════════════════════════
     // Child ViewModels
@@ -44,6 +49,9 @@ public class MainViewModel : ViewModelBase, IDisposable
     public MissionViewModel Mission { get; } = new();
     public WeatherViewModel Weather { get; }
     public FailsafeViewModel Failsafe { get; }
+    public ParametersViewModel Parameters { get; }
+    public FirmwareViewModel Firmware { get; }
+    public ToastsViewModel Toasts { get; } = new();
 
     // ═══════════════════════════════════════════════════════════════
     // Constructor
@@ -77,6 +85,35 @@ public class MainViewModel : ViewModelBase, IDisposable
             }
         );
 
+        Parameters = new ParametersViewModel(
+            setParam: async (name, value) =>
+            {
+                var backend = _session?.Backend;
+                if (backend != null)
+                    await backend.SetParameterAsync(name, value);
+            },
+            requestParam: async (name) =>
+            {
+                var backend = _session?.Backend;
+                if (backend != null)
+                    await backend.RequestParameterAsync(name);
+            }
+        );
+
+        // MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN (246), param1=3 => reboot and hold in bootloader.
+        Firmware = new FirmwareViewModel(
+            rebootToBootloader: async () =>
+            {
+                var backend = _session?.Backend
+                    ?? throw new InvalidOperationException("Not connected to a vehicle.");
+                await backend.SendCommandLongAsync(246, param1: 3);
+            },
+            disconnectVehicle: async () =>
+            {
+                await CleanupAsync();
+                Connection.SetDisconnected();
+            });
+
         Connection.ConnectRequested += OnConnectRequested;
         Connection.DisconnectRequested += OnDisconnectRequested;
     }
@@ -87,45 +124,57 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     private async void OnConnectRequested(TransportConfig config)
     {
+        _userDisconnect = false;
+        _lastConfig = config;
         try
         {
-            var syncContext = SynchronizationContext.Current
-                ?? throw new InvalidOperationException("Must be called from UI thread");
-
-            // Build the entire backend graph in one place.
-            _session = new VehicleSession(config, syncContext);
-
-            // Subscribe this view-model's handlers to the aggregated session events.
-            _session.TransportStateChanged += OnTransportStateChanged;
-            _session.AutopilotMessageReceived += OnAutopilotMessage;
-            _session.RcChannelsReceived += OnRcChannelsReceived;
-            _session.ParameterReceived += OnParameterReceived;
-            _session.VehicleStateChanged += OnVehicleStateChanged;
-            _session.HealthChanged += OnHealthStateChanged;
-            _session.AlertsChanged += OnAlertsChanged;
-            _session.PreflightChanged += OnPreflightChanged;
-
-            // Hand the backend/mission service to the dependent view-models.
-            Actions = new ActionsViewModel(_session.Backend);
-            OnPropertyChanged(nameof(Actions));
-            Preflight.SetBackend(_session.Backend);
-            Mission.SetMissionService(_session.MissionService);
-
-            await _session.StartAsync(CancellationToken.None);
-
-            Connection.SetConnected();
-            Failsafe.UpdateConnectionState(true);
-            _ = Failsafe.RefreshFailsafeParams();
+            await ConnectAsync(config);
+            PersistProfile(config);
+            Notifier.Success("Connected");
         }
         catch (Exception ex)
         {
             Connection.SetError(ex.Message);
+            Notifier.Error($"Connection failed: {ex.Message}");
             await CleanupAsync();
         }
     }
 
+    /// <summary>Builds + starts the backend session. Throws on failure (caller cleans up).</summary>
+    private async Task ConnectAsync(TransportConfig config)
+    {
+        var syncContext = SynchronizationContext.Current
+            ?? throw new InvalidOperationException("Must be called from UI thread");
+
+        await CleanupAsync(); // ensure a clean slate (no-op when already disconnected)
+
+        _session = new VehicleSession(config, syncContext);
+
+        _session.TransportStateChanged += OnTransportStateChanged;
+        _session.AutopilotMessageReceived += OnAutopilotMessage;
+        _session.RcChannelsReceived += OnRcChannelsReceived;
+        _session.ParameterReceived += OnParameterReceived;
+        _session.VehicleStateChanged += OnVehicleStateChanged;
+        _session.HealthChanged += OnHealthStateChanged;
+        _session.AlertsChanged += OnAlertsChanged;
+        _session.PreflightChanged += OnPreflightChanged;
+
+        Actions = new ActionsViewModel(_session.Backend);
+        OnPropertyChanged(nameof(Actions));
+        Preflight.SetBackend(_session.Backend);
+        Mission.SetMissionService(_session.MissionService);
+
+        await _session.StartAsync(CancellationToken.None);
+
+        Connection.SetConnected();
+        Failsafe.UpdateConnectionState(true);
+        Parameters.UpdateConnectionState(true);
+        _ = Failsafe.RefreshFailsafeParams();
+    }
+
     private async void OnDisconnectRequested()
     {
+        _userDisconnect = true;
         try
         {
             await CleanupAsync();
@@ -135,6 +184,88 @@ public class MainViewModel : ViewModelBase, IDisposable
             Debug.WriteLine($"[MainVM] Disconnect error: {ex.Message}");
         }
         Connection.SetDisconnected();
+        Notifier.Info("Disconnected");
+    }
+
+    /// <summary>Command the vehicle to fly to a map point in GUIDED mode (from the map's right-click).</summary>
+    public async void FlyTo(double lat, double lon)
+    {
+        var backend = _session?.Backend;
+        if (backend == null)
+        {
+            Notifier.Warning("Not connected — can't fly to point.");
+            return;
+        }
+
+        float alt = Mission.DefaultAltitude;
+        var result = System.Windows.MessageBox.Show(
+            $"Fly to:\n{lat:F6}, {lon:F6}\nat {alt:F0} m (relative), in GUIDED mode?",
+            "Fly here", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Warning);
+        if (result != System.Windows.MessageBoxResult.Yes) return;
+
+        try
+        {
+            await backend.SendGuidedGotoAsync(lat, lon, alt);
+            Notifier.Success($"Flying to {lat:F5}, {lon:F5}");
+        }
+        catch (Exception ex)
+        {
+            Notifier.Error($"Fly-to failed: {ex.Message}");
+        }
+    }
+
+    private void MaybeAutoReconnect()
+    {
+        if (_userDisconnect || _reconnecting || _lastConfig == null || !SettingsStore.Current.AutoReconnect)
+            return;
+        _ = AutoReconnectLoop();
+    }
+
+    private async Task AutoReconnectLoop()
+    {
+        _reconnecting = true;
+        Notifier.Warning("Link lost — reconnecting…");
+        try
+        {
+            await CleanupAsync();
+            int attempt = 0;
+            while (!_userDisconnect && SettingsStore.Current.AutoReconnect && _lastConfig != null)
+            {
+                attempt++;
+                Connection.StatusMessage = $"Reconnecting (attempt {attempt})…";
+                await Task.Delay(2000);
+                if (_userDisconnect) break;
+                try
+                {
+                    await ConnectAsync(_lastConfig);
+                    Notifier.Success("Reconnected");
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[MainVM] Reconnect attempt {attempt} failed: {ex.Message}");
+                    await CleanupAsync();
+                }
+            }
+        }
+        finally
+        {
+            _reconnecting = false;
+        }
+    }
+
+    private static void PersistProfile(TransportConfig config)
+    {
+        ConnectionProfile? p = config switch
+        {
+            SerialTransportConfig s => new ConnectionProfile { Kind = TransportKind.Serial, PortName = s.PortName, BaudRate = s.BaudRate },
+            TcpTransportConfig t => new ConnectionProfile { Kind = TransportKind.Tcp, Host = t.Host, Port = t.Port },
+            UdpTransportConfig u => new ConnectionProfile { Kind = TransportKind.Udp, LocalPort = u.LocalPort, RemoteHost = u.RemoteHost, RemotePort = u.RemotePort },
+            _ => null
+        };
+        if (p == null) return;
+        SettingsStore.Current.Remember(p);
+        SettingsStore.Save();
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -144,25 +275,37 @@ public class MainViewModel : ViewModelBase, IDisposable
     private void OnParameterReceived(string paramId, float value)
     {
         Failsafe.OnParameterReceived(paramId, value);
+        Parameters.OnParameterReceived(paramId, value);
     }
 
     private void OnTransportStateChanged(TransportState state)
     {
-        switch (state)
+        // This can arrive on the transport thread; marshal UI/state work to the UI thread.
+        var dispatcher = System.Windows.Application.Current?.Dispatcher;
+        Action apply = () =>
         {
-            case TransportState.Connecting:
-                Connection.StatusMessage = "Connecting...";
-                break;
-            case TransportState.Connected:
-                Connection.StatusMessage = "Transport connected, waiting for heartbeat...";
-                break;
-            case TransportState.Error:
-                Connection.SetError("Transport error");
-                break;
-            case TransportState.Disconnected:
-                Connection.SetDisconnected();
-                break;
-        }
+            switch (state)
+            {
+                case TransportState.Connecting:
+                    Connection.StatusMessage = "Connecting...";
+                    break;
+                case TransportState.Connected:
+                    Connection.StatusMessage = "Transport connected, waiting for heartbeat...";
+                    break;
+                case TransportState.Error:
+                    Connection.SetError("Transport error");
+                    MaybeAutoReconnect();
+                    break;
+                case TransportState.Disconnected:
+                    Connection.SetDisconnected();
+                    break;
+            }
+        };
+
+        if (dispatcher != null && !dispatcher.CheckAccess())
+            dispatcher.BeginInvoke(apply);
+        else
+            apply();
     }
 
     private void OnVehicleStateChanged(VehicleState state)
@@ -173,6 +316,8 @@ public class MainViewModel : ViewModelBase, IDisposable
         bool isConnected = state.FlightMode.HasValue || state.Position != null || state.Attitude != null;
         Preflight.UpdateConnectionState(isConnected);
         Mission.UpdateConnectionState(isConnected);
+        if (state.Position != null)
+            Mission.UpdateVehiclePosition(state.Position.LatitudeDeg, state.Position.LongitudeDeg, state.Position.AltitudeRelMeters);
 
         if (state.Connection?.IsConnected == true && Connection.IsConnected)
         {
@@ -238,11 +383,24 @@ public class MainViewModel : ViewModelBase, IDisposable
         }
 
         Failsafe.UpdateConnectionState(false);
+        Parameters.UpdateConnectionState(false);
     }
 
     public async Task ShutdownAsync()
     {
+        _userDisconnect = true;
+        SaveSettings();
         await CleanupAsync();
+    }
+
+    private void SaveSettings()
+    {
+        var s = SettingsStore.Current;
+        s.DefaultAltitude = Mission.DefaultAltitude;
+        s.DefaultRadius = Mission.DefaultRadius;
+        s.DefaultFrame = Mission.DefaultFrame;
+        s.CruiseSpeedMps = Mission.CruiseSpeedMps;
+        SettingsStore.Save();
     }
 
     public void Dispose()

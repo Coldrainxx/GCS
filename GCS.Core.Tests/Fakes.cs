@@ -72,6 +72,9 @@ internal sealed class FakeBackend : IMavlinkBackend
 
     public Task SendArmDisarmAsync(bool arm, CancellationToken ct = default) => Task.CompletedTask;
 
+    public Task SendGuidedGotoAsync(double latitudeDeg, double longitudeDeg, float altitudeMeters, CancellationToken ct = default)
+        => Task.CompletedTask;
+
     public Task SetParameterAsync(string paramId, float value, CancellationToken ct = default)
         => Task.CompletedTask;
 

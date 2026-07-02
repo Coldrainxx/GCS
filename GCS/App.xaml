@@ -2,8 +2,15 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:GCS"
+             xmlns:beh="clr-namespace:GCS.Behaviors"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
+        <!-- Forward the mouse wheel to the surrounding scroll viewer when an inner
+             list/grid is at its scroll boundary, so every tab scrolls. -->
+        <Style TargetType="ListBox"><Setter Property="beh:ScrollForwarding.Enabled" Value="True"/></Style>
+        <Style TargetType="ListView"><Setter Property="beh:ScrollForwarding.Enabled" Value="True"/></Style>
+        <Style TargetType="DataGrid"><Setter Property="beh:ScrollForwarding.Enabled" Value="True"/></Style>
+
         <!-- Global Converters -->
         <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <local:BoolToYesNoConverter x:Key="BoolToYesNoConverter"/>

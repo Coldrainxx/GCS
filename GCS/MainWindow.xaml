@@ -67,6 +67,8 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="50"/>
                 <!-- Top Bar -->
+                <RowDefinition Height="Auto"/>
+                <!-- Action Bar -->
                 <RowDefinition/>
                 <!-- Main Content -->
                 <RowDefinition Height="50"/>
@@ -86,32 +88,54 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- Left: Link Status Button -->
-                    <Button Grid.Column="0" 
-                            Style="{StaticResource ModernButtonStyle}"
-                            Margin="10,0,0,0"
-                            Click="LinkButton_Click">
-                        <StackPanel Orientation="Horizontal">
-                            <!-- Status Indicator -->
-                            <Ellipse Width="10" Height="10" Margin="0,0,10,0">
-                                <Ellipse.Style>
-                                    <Style TargetType="Ellipse">
-                                        <Setter Property="Fill" Value="{StaticResource AccentRed}"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding Telemetry.IsConnected}" Value="True">
-                                                <Setter Property="Fill" Value="{StaticResource AccentGreen}"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Ellipse.Style>
-                            </Ellipse>
+                    <!-- Left: Link + Params buttons -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal"
+                                Margin="10,0,0,0" VerticalAlignment="Center">
+                        <Button Style="{StaticResource ModernButtonStyle}"
+                                Click="LinkButton_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <!-- Status Indicator -->
+                                <Ellipse Width="10" Height="10" Margin="0,0,10,0">
+                                    <Ellipse.Style>
+                                        <Style TargetType="Ellipse">
+                                            <Setter Property="Fill" Value="{StaticResource AccentRed}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Telemetry.IsConnected}" Value="True">
+                                                    <Setter Property="Fill" Value="{StaticResource AccentGreen}"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Ellipse.Style>
+                                </Ellipse>
 
-                            <TextBlock Text="LINK" 
-                                      FontWeight="Bold" 
+                                <TextBlock Text="LINK"
+                                          FontWeight="Bold"
+                                          FontSize="14"
+                                          Foreground="{StaticResource PrimaryText}"/>
+                            </StackPanel>
+                        </Button>
+
+                        <Button x:Name="ParamsButton"
+                                Style="{StaticResource ModernButtonStyle}"
+                                Margin="8,0,0,0"
+                                Click="ParamsButton_Click">
+                            <TextBlock Text="⚙ PARAMS"
+                                      FontWeight="Bold"
                                       FontSize="14"
                                       Foreground="{StaticResource PrimaryText}"/>
-                        </StackPanel>
-                    </Button>
+                        </Button>
+
+                        <Button x:Name="FirmwareButton"
+                                Style="{StaticResource ModernButtonStyle}"
+                                Margin="8,0,0,0"
+                                Click="FirmwareButton_Click">
+                            <TextBlock Text="⚡ FIRMWARE"
+                                      FontWeight="Bold"
+                                      FontSize="14"
+                                      Foreground="{StaticResource PrimaryText}"/>
+                        </Button>
+
+                    </StackPanel>
 
                     <!-- Center: Vehicle Info - Fixed Alignment -->
                     <StackPanel Grid.Column="1" 
@@ -350,8 +374,40 @@
                 </Grid>
             </Border>
 
+            <!-- ACTION BAR -->
+            <Border Grid.Row="1"
+                    Background="{StaticResource PanelBackground}"
+                    BorderBrush="{StaticResource BorderBrush}"
+                    BorderThickness="0,0,0,1"
+                    Padding="10,6">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button Content="ARM" Style="{StaticResource ModernButtonStyle}"
+                            Background="{StaticResource AccentGreen}" Foreground="White"
+                            Command="{Binding Actions.ArmCommand}" Margin="0,0,6,0"/>
+                    <Button Content="DISARM" Style="{StaticResource ModernButtonStyle}"
+                            Background="{StaticResource AccentRed}" Foreground="White"
+                            Command="{Binding Actions.DisarmCommand}" Margin="0,0,16,0"/>
+
+                    <TextBlock Text="MODE" Foreground="{StaticResource SecondaryText}" FontSize="11"
+                               FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox Width="140" VerticalAlignment="Center"
+                              ItemsSource="{Binding Actions.AvailableModes}"
+                              SelectedIndex="{Binding Actions.SelectedModeIndex}"/>
+                    <Button Content="SET" Style="{StaticResource ModernButtonStyle}"
+                            Command="{Binding Actions.SetModeCommand}" Margin="6,0,16,0"/>
+
+                    <Button Content="RTL" Style="{StaticResource ModernButtonStyle}"
+                            Background="{StaticResource AccentOrange}" Foreground="White"
+                            Command="{Binding Actions.RtlCommand}" Margin="0,0,6,0"/>
+                    <Button Content="LOITER" Style="{StaticResource ModernButtonStyle}"
+                            Command="{Binding Actions.LoiterCommand}" Margin="0,0,6,0"/>
+                    <Button Content="QLAND" Style="{StaticResource ModernButtonStyle}"
+                            Command="{Binding Actions.QLandCommand}" Margin="0,0,6,0"/>
+                </StackPanel>
+            </Border>
+
             <!-- MAIN CONTENT -->
-            <Grid Grid.Row="1">
+            <Grid x:Name="MainContentGrid" Grid.Row="2">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="500"/>
                     <ColumnDefinition Width="*"/>
@@ -374,7 +430,7 @@
             </Grid>
 
             <!-- BOTTOM PANEL: Alerts -->
-            <Border Grid.Row="2" 
+            <Border Grid.Row="3"
                     Background="{StaticResource PanelBackground}"
                     BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="0,1,0,0">
@@ -383,7 +439,7 @@
 
             <!-- CONNECTION POPUP (Hidden by default) -->
             <Border x:Name="ConnectionPopup"
-                    Grid.Row="1"
+                    Grid.Row="2"
                     Width="400"
                     Height="500"
                     HorizontalAlignment="Left"
@@ -403,6 +459,65 @@
                 </Border.Effect>
                 <views:ConnectionView DataContext="{Binding Connection}"/>
             </Border>
+
+            <!-- FULL-WINDOW PARAMETERS VIEW (toggled by the Params button) -->
+            <Border x:Name="ParamsView"
+                    Grid.Row="2"
+                    Background="{StaticResource PanelBackground}"
+                    Visibility="Collapsed"
+                    Panel.ZIndex="90">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Header with close -->
+                    <Grid Grid.Row="0" Background="{StaticResource CardBackground}">
+                        <TextBlock Text="PARAMETERS"
+                                   FontWeight="Bold" FontSize="14"
+                                   Foreground="{StaticResource AccentCyan}"
+                                   VerticalAlignment="Center" Margin="16,10"/>
+                        <Button Content="✕ CLOSE"
+                                HorizontalAlignment="Right" Margin="0,6,10,6"
+                                Style="{StaticResource ModernButtonStyle}"
+                                Click="ParamsButton_Click"/>
+                    </Grid>
+
+                    <views:ParametersTabView Grid.Row="1" DataContext="{Binding Parameters}"/>
+                </Grid>
+            </Border>
+
+            <!-- FULL-WINDOW FIRMWARE VIEW (toggled by the Firmware button) -->
+            <Border x:Name="FirmwarePanel"
+                    Grid.Row="2"
+                    Background="{StaticResource PanelBackground}"
+                    Visibility="Collapsed"
+                    Panel.ZIndex="90">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0" Background="{StaticResource CardBackground}">
+                        <TextBlock Text="FIRMWARE"
+                                   FontWeight="Bold" FontSize="14"
+                                   Foreground="{StaticResource AccentCyan}"
+                                   VerticalAlignment="Center" Margin="16,10"/>
+                        <Button Content="✕ CLOSE"
+                                HorizontalAlignment="Right" Margin="0,6,10,6"
+                                Style="{StaticResource ModernButtonStyle}"
+                                Click="FirmwareButton_Click"/>
+                    </Grid>
+
+                    <views:FirmwareView Grid.Row="1" DataContext="{Binding Firmware}"/>
+                </Grid>
+            </Border>
+
+            <!-- Toast notifications overlay (click-through except over a toast) -->
+            <views:ToastHost Grid.Row="0" Grid.RowSpan="4"
+                             DataContext="{Binding Toasts}" Panel.ZIndex="200"/>
         </Grid>
     </Border>
 </Window>

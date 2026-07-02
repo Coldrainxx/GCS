@@ -290,6 +290,38 @@ public sealed class MavlinkBackend : IMavlinkBackend
             ct: ct);
     }
 
+    public async Task SendGuidedGotoAsync(
+        double latitudeDeg, double longitudeDeg, float altitudeMeters, CancellationToken ct = default)
+    {
+        EnsureConnected();
+
+        // COMMAND_INT (75) / MAV_CMD_DO_REPOSITION (192). param2 bit0 = change to
+        // GUIDED. Lat/Lon carried as int32 (1e7) so precision isn't lost.
+        var packet = Mavlink2Serializer.Build(
+            messageId: 75,
+            sysId: GcsSysId,
+            compId: GcsCompId,
+            fieldValues: new()
+            {
+                ["target_system"] = _connection.SystemId,
+                ["target_component"] = _connection.ComponentId,
+                ["frame"] = (byte)6,       // MAV_FRAME_GLOBAL_RELATIVE_ALT_INT
+                ["command"] = (ushort)192, // MAV_CMD_DO_REPOSITION
+                ["current"] = (byte)0,
+                ["autocontinue"] = (byte)0,
+                ["param1"] = -1f,          // ground speed: default
+                ["param2"] = 1f,           // MAV_DO_REPOSITION_FLAGS: change to guided
+                ["param3"] = 0f,
+                ["param4"] = float.NaN,     // yaw: unchanged
+                ["x"] = (int)(latitudeDeg * 1e7),
+                ["y"] = (int)(longitudeDeg * 1e7),
+                ["z"] = altitudeMeters
+            });
+
+        await _transport.SendAsync(packet, ct);
+        Debug.WriteLine($"[MavlinkBackend] Guided goto {latitudeDeg:F6},{longitudeDeg:F6} @ {altitudeMeters}m");
+    }
+
     public async Task SendRawAsync(ReadOnlyMemory<byte> packet, CancellationToken ct = default)
     {
         await _transport.SendAsync(packet, ct);

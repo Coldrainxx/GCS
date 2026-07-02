@@ -1,8 +1,10 @@
 using CommunityToolkit.Mvvm.Input;
 using GCS.Core.Domain;
 using GCS.Core.Mission;
+using GCS.Core.Settings;
 using Microsoft.Win32;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -27,7 +29,14 @@ public class MissionViewModel : ViewModelBase
     private bool _isBusy;
     private float _defaultAltitude = 100;
     private float _defaultRadius = 10;
+    private byte _defaultFrame = 3; // MAV_FRAME_GLOBAL_RELATIVE_ALT
+    private float _cruiseSpeedMps = 15;
     private int _selectedIndex = -1;
+
+    // Latest vehicle position (for "Set home from vehicle").
+    private double _vehLat, _vehLon;
+    private float _vehAlt;
+    private bool _hasVehiclePosition;
     private int _selectedCommandIndex = 0;
     private MissionItemViewModel? _selectedWaypoint;
 
@@ -57,6 +66,33 @@ public class MissionViewModel : ViewModelBase
 
     public float DefaultAltitude { get => _defaultAltitude; set => SetProperty(ref _defaultAltitude, value); }
     public float DefaultRadius { get => _defaultRadius; set => SetProperty(ref _defaultRadius, value); }
+
+    /// <summary>Altitude frame for new waypoints; changing it applies to all existing waypoints too.</summary>
+    public byte DefaultFrame
+    {
+        get => _defaultFrame;
+        set
+        {
+            if (SetProperty(ref _defaultFrame, value))
+                foreach (var wp in Waypoints)
+                    wp.Frame = value;
+        }
+    }
+
+    /// <summary>Average speed used for the ETA estimate.</summary>
+    public float CruiseSpeedMps
+    {
+        get => _cruiseSpeedMps;
+        set { if (SetProperty(ref _cruiseSpeedMps, value)) CalculateStatistics(); }
+    }
+
+    /// <summary>Frame options for the altitude-frame selector.</summary>
+    public static IReadOnlyList<FrameOption> FrameOptions { get; } = new[]
+    {
+        new FrameOption(3, "Rel alt"),   // MAV_FRAME_GLOBAL_RELATIVE_ALT
+        new FrameOption(0, "Abs alt"),   // MAV_FRAME_GLOBAL
+        new FrameOption(10, "Terrain"),  // MAV_FRAME_GLOBAL_TERRAIN_ALT
+    };
 
     public int SelectedIndex
     {
@@ -108,6 +144,8 @@ public class MissionViewModel : ViewModelBase
     public ICommand MoveUpCommand { get; }
     public ICommand MoveDownCommand { get; }
     public ICommand SetHomeCommand { get; }
+    public ICommand SetHomeFromVehicleCommand { get; }
+    public ICommand SetCurrentCommand { get; }
     public ICommand ExportCommand { get; }
     public ICommand ImportCommand { get; }
     public ICommand ApplyEditCommand { get; }
@@ -116,6 +154,12 @@ public class MissionViewModel : ViewModelBase
 
     public MissionViewModel()
     {
+        var s = SettingsStore.Current;
+        _defaultAltitude = s.DefaultAltitude;
+        _defaultRadius = s.DefaultRadius;
+        _defaultFrame = s.DefaultFrame;
+        _cruiseSpeedMps = s.CruiseSpeedMps;
+
         UploadCommand = new AsyncRelayCommand(UploadAsync, () => IsConnected && !IsBusy);
         DownloadCommand = new AsyncRelayCommand(DownloadAsync, () => IsConnected && !IsBusy);
         ClearCommand = new RelayCommand(ClearAll, () => Waypoints.Count > 0 && !IsBusy);
@@ -126,6 +170,8 @@ public class MissionViewModel : ViewModelBase
         MoveUpCommand = new RelayCommand(MoveUp, () => SelectedIndex > 0 && !IsBusy);
         MoveDownCommand = new RelayCommand(MoveDown, () => SelectedIndex >= 0 && SelectedIndex < Waypoints.Count - 1 && !IsBusy);
         SetHomeCommand = new RelayCommand(SetHomeFromSelected, () => SelectedIndex >= 0 && !IsBusy);
+        SetHomeFromVehicleCommand = new RelayCommand(SetHomeFromVehicle, () => _hasVehiclePosition && !IsBusy);
+        SetCurrentCommand = new AsyncRelayCommand(SetCurrentAsync, () => IsConnected && SelectedIndex >= 0 && !IsBusy);
         ExportCommand = new RelayCommand(ExportMission, () => Waypoints.Count > 0);
         ImportCommand = new RelayCommand(ImportMission);
         ApplyEditCommand = new RelayCommand(ApplyEdit, () => SelectedWaypoint != null);
@@ -183,7 +229,8 @@ public class MissionViewModel : ViewModelBase
             LatitudeDeg: lat,
             LongitudeDeg: lon,
             AltitudeMeters: DefaultAltitude,
-            Param2: DefaultRadius
+            Param2: DefaultRadius,
+            Frame: DefaultFrame
         );
 
         var vm = new MissionItemViewModel(item, isHome: false);
@@ -232,7 +279,7 @@ public class MissionViewModel : ViewModelBase
             lon = (prev.Longitude + curr.Longitude) / 2;
         }
 
-        var item = new MissionItem(index, MavCmd.Waypoint, lat, lon, DefaultAltitude, Param2: DefaultRadius);
+        var item = new MissionItem(index, MavCmd.Waypoint, lat, lon, DefaultAltitude, Param2: DefaultRadius, Frame: DefaultFrame);
         var vm = new MissionItemViewModel(item, isHome: false);
         Waypoints.Insert(index, vm);
         RenumberWaypoints();
@@ -265,6 +312,20 @@ public class MissionViewModel : ViewModelBase
         SelectedIndex = idx + 1;
     }
 
+    /// <summary>Move a waypoint to a new index (drag-and-drop reorder).</summary>
+    public void MoveWaypoint(MissionItemViewModel item, int toIndex)
+    {
+        int from = Waypoints.IndexOf(item);
+        if (from < 0) return;
+        toIndex = Math.Clamp(toIndex, 0, Waypoints.Count - 1);
+        if (from == toIndex) return;
+
+        Waypoints.Move(from, toIndex);
+        RenumberWaypoints();
+        RebuildMapMarkers();
+        SelectedIndex = toIndex;
+    }
+
     private void RemoveSelected()
     {
         if (SelectedIndex < 0 || SelectedIndex >= Waypoints.Count) return;
@@ -288,6 +349,36 @@ public class MissionViewModel : ViewModelBase
         SelectedIndex = 0;
     }
 
+    private void SetHomeFromVehicle()
+    {
+        if (!_hasVehiclePosition) return;
+
+        var home = new MissionItem(0, MavCmd.Waypoint, _vehLat, _vehLon, _vehAlt, Frame: 0);
+        var vm = new MissionItemViewModel(home, isHome: true);
+
+        if (Waypoints.Count > 0 && Waypoints[0].IsHome) Waypoints[0] = vm;
+        else Waypoints.Insert(0, vm);
+
+        RenumberWaypoints();
+        RebuildMapMarkers();
+        UpdateStatus();
+        SelectedIndex = 0;
+    }
+
+    private async Task SetCurrentAsync()
+    {
+        if (_missionService == null || SelectedIndex < 0) return;
+        try
+        {
+            await _missionService.SetCurrentAsync((ushort)SelectedIndex, CancellationToken.None);
+            Status = $"Set current waypoint → {SelectedIndex}";
+        }
+        catch (Exception ex)
+        {
+            Status = $"Set current failed: {ex.Message}";
+        }
+    }
+
     #endregion
 
     #region Statistics
@@ -304,33 +395,14 @@ public class MissionViewModel : ViewModelBase
 
         double totalDist = 0;
         for (int i = 1; i < Waypoints.Count; i++)
-            totalDist += CalculateDistance(Waypoints[i - 1].Latitude, Waypoints[i - 1].Longitude,
-                                           Waypoints[i].Latitude, Waypoints[i].Longitude);
+            totalDist += GeoMath.DistanceMeters(Waypoints[i - 1].Latitude, Waypoints[i - 1].Longitude,
+                                                Waypoints[i].Latitude, Waypoints[i].Longitude);
 
         TotalDistance = totalDist;
-        var ts = TimeSpan.FromSeconds(totalDist / 15.0); // 15 m/s avg
+        double cruise = CruiseSpeedMps > 0 ? CruiseSpeedMps : 15.0;
+        var ts = TimeSpan.FromSeconds(totalDist / cruise);
         EstimatedTime = ts.TotalHours >= 1 ? $"{(int)ts.TotalHours}:{ts.Minutes:D2}:{ts.Seconds:D2}" : $"{ts.Minutes:D2}:{ts.Seconds:D2}";
         OnPropertyChanged(nameof(TotalDistanceText));
-    }
-
-    public static double CalculateDistance(double lat1, double lon1, double lat2, double lon2)
-    {
-        const double R = 6371000;
-        double dLat = (lat2 - lat1) * Math.PI / 180;
-        double dLon = (lon2 - lon1) * Math.PI / 180;
-        double a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
-                   Math.Cos(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180) *
-                   Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
-        return R * 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-    }
-
-    public static double CalculateBearing(double lat1, double lon1, double lat2, double lon2)
-    {
-        double dLon = (lon2 - lon1) * Math.PI / 180;
-        double y = Math.Sin(dLon) * Math.Cos(lat2 * Math.PI / 180);
-        double x = Math.Cos(lat1 * Math.PI / 180) * Math.Sin(lat2 * Math.PI / 180) -
-                   Math.Sin(lat1 * Math.PI / 180) * Math.Cos(lat2 * Math.PI / 180) * Math.Cos(dLon);
-        return (Math.Atan2(y, x) * 180 / Math.PI + 360) % 360;
     }
 
     #endregion
@@ -350,18 +422,9 @@ public class MissionViewModel : ViewModelBase
         {
             try
             {
-                var sb = new StringBuilder();
-                sb.AppendLine("QGC WPL 110");
-                foreach (var wp in Waypoints)
-                {
-                    int current = wp.Sequence == 0 ? 1 : 0;
-                    sb.AppendLine(string.Format(CultureInfo.InvariantCulture,
-                        "{0}\t{1}\t{2}\t{3}\t{4:F6}\t{5:F6}\t{6:F6}\t{7:F6}\t{8:F8}\t{9:F8}\t{10:F6}\t1",
-                        wp.Sequence, current, wp.Frame, wp.Command, wp.Param1, wp.Radius, wp.Param3, wp.Param4,
-                        wp.Latitude, wp.Longitude, wp.Altitude));
-                }
-                File.WriteAllText(dialog.FileName, sb.ToString());
-                Status = $"Exported {Waypoints.Count} waypoints";
+                var items = Waypoints.Select((w, i) => w.ToMissionItem() with { Sequence = i }).ToList();
+                File.WriteAllText(dialog.FileName, WaypointFile.Serialize(items));
+                Status = $"Exported {items.Count} waypoints";
             }
             catch (Exception ex) { Status = $"Export failed: {ex.Message}"; }
         }
@@ -378,27 +441,11 @@ public class MissionViewModel : ViewModelBase
         {
             try
             {
-                var lines = File.ReadAllLines(dialog.FileName);
-                if (lines.Length == 0 || !lines[0].StartsWith("QGC WPL")) { Status = "Invalid file format"; return; }
+                var items = WaypointFile.Parse(File.ReadAllText(dialog.FileName));
 
                 ClearAllInternal();
-                for (int i = 1; i < lines.Length; i++)
+                foreach (var item in items)
                 {
-                    var parts = lines[i].Split('\t');
-                    if (parts.Length < 12) continue;
-
-                    var item = new MissionItem(
-                        int.Parse(parts[0]),
-                        ushort.Parse(parts[3]),
-                        double.Parse(parts[8], CultureInfo.InvariantCulture),
-                        double.Parse(parts[9], CultureInfo.InvariantCulture),
-                        float.Parse(parts[10], CultureInfo.InvariantCulture),
-                        float.Parse(parts[4], CultureInfo.InvariantCulture),
-                        float.Parse(parts[5], CultureInfo.InvariantCulture),
-                        float.Parse(parts[6], CultureInfo.InvariantCulture),
-                        float.Parse(parts[7], CultureInfo.InvariantCulture),
-                        byte.Parse(parts[2])
-                    );
                     bool isHome = item.Sequence == 0 && item.Command == MavCmd.Waypoint;
                     Waypoints.Add(new MissionItemViewModel(item, isHome));
                 }
@@ -406,6 +453,7 @@ public class MissionViewModel : ViewModelBase
                 UpdateStatus();
                 Status = $"Imported {Waypoints.Count} waypoints";
             }
+            catch (FormatException) { Status = "Invalid file format"; }
             catch (Exception ex) { Status = $"Import failed: {ex.Message}"; }
         }
     }
@@ -430,14 +478,31 @@ public class MissionViewModel : ViewModelBase
             }
             else
             {
-                Status = "Uploading...";
                 var items = Waypoints.Select((w, i) => w.ToMissionItem() with { Sequence = i }).ToList();
+                // Item 0 is home: ArduPilot expects it in the global (absolute-alt) frame.
+                if (Waypoints[0].IsHome) items[0] = items[0] with { Frame = 0 };
+
+                var warnings = MissionValidator.Validate(items);
+                if (warnings.Count > 0)
+                {
+                    var msg = "Mission warnings:\n\n • " + string.Join("\n • ", warnings) + "\n\nUpload anyway?";
+                    if (MessageBox.Show(msg, "Mission validation", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                    {
+                        Status = "Upload cancelled";
+                        return;
+                    }
+                }
+
+                Status = "Uploading...";
                 await _missionService.UploadAsync(items, CancellationToken.None);
             }
         }
         catch (Exception ex)
         {
             Status = $"Upload failed: {ex.Message}";
+        }
+        finally
+        {
             IsBusy = false;
         }
     }
@@ -531,7 +596,40 @@ public class MissionViewModel : ViewModelBase
 
     public void UpdateConnectionState(bool isConnected) => IsConnected = isConnected;
 
+    /// <summary>Latest vehicle position, pushed from telemetry, for "set home from vehicle".</summary>
+    public void UpdateVehiclePosition(double lat, double lon, float alt)
+    {
+        _vehLat = lat; _vehLon = lon; _vehAlt = alt;
+        if (!_hasVehiclePosition && (lat != 0 || lon != 0))
+        {
+            _hasVehiclePosition = true;
+            CommandManager.InvalidateRequerySuggested();
+        }
+    }
+
     #endregion
+}
+
+/// <summary>A MAV_FRAME option for the altitude-frame selector.</summary>
+public sealed record FrameOption(byte Value, string Name)
+{
+    public override string ToString() => Name;
+}
+
+/// <summary>Per-command parameter labels for the mission editor.</summary>
+public static class MissionParams
+{
+    public static string Label(ushort command, int param) => command switch
+    {
+        MavCmd.Waypoint => param switch { 1 => "Hold (s)", 2 => "Radius (m)", 3 => "Pass-by (m)", 4 => "Yaw (deg)", _ => "" },
+        MavCmd.Takeoff => param switch { 1 => "Pitch (deg)", 2 => "—", 3 => "—", 4 => "Yaw (deg)", _ => "" },
+        MavCmd.Land => param switch { 1 => "Abort alt (m)", 2 => "—", 3 => "—", 4 => "Yaw (deg)", _ => "" },
+        MavCmd.Loiter => param switch { 1 => "—", 2 => "—", 3 => "Radius (m)", 4 => "Yaw (deg)", _ => "" },
+        MavCmd.LoiterTurns => param switch { 1 => "Turns", 2 => "—", 3 => "Radius (m)", 4 => "Yaw (deg)", _ => "" },
+        MavCmd.LoiterTime => param switch { 1 => "Time (s)", 2 => "—", 3 => "Radius (m)", 4 => "Yaw (deg)", _ => "" },
+        MavCmd.ReturnToLaunch => param switch { _ => "—" },
+        _ => param switch { 1 => "Param 1", 2 => "Param 2", 3 => "Param 3", 4 => "Param 4", _ => "" }
+    };
 }
 
 public class MissionItemViewModel : ViewModelBase
@@ -549,7 +647,21 @@ public class MissionItemViewModel : ViewModelBase
     private bool _isHome;
 
     public int Sequence { get => _sequence; set { if (SetProperty(ref _sequence, value)) OnPropertyChanged(nameof(DisplayIndex)); } }
-    public ushort Command { get => _command; set { if (SetProperty(ref _command, value)) OnPropertyChanged(nameof(CommandName)); } }
+    public ushort Command
+    {
+        get => _command;
+        set
+        {
+            if (SetProperty(ref _command, value))
+            {
+                OnPropertyChanged(nameof(CommandName));
+                OnPropertyChanged(nameof(Param1Label));
+                OnPropertyChanged(nameof(Param2Label));
+                OnPropertyChanged(nameof(Param3Label));
+                OnPropertyChanged(nameof(Param4Label));
+            }
+        }
+    }
     public double Latitude { get => _latitude; set => SetProperty(ref _latitude, value); }
     public double Longitude { get => _longitude; set => SetProperty(ref _longitude, value); }
     public float Altitude { get => _altitude; set => SetProperty(ref _altitude, value); }
@@ -562,6 +674,11 @@ public class MissionItemViewModel : ViewModelBase
 
     public string CommandName => MissionViewModel.GetCommandName(Command, IsHome);
     public int DisplayIndex => Sequence;
+
+    public string Param1Label => MissionParams.Label(Command, 1);
+    public string Param2Label => MissionParams.Label(Command, 2);
+    public string Param3Label => MissionParams.Label(Command, 3);
+    public string Param4Label => MissionParams.Label(Command, 4);
 
     public MissionItemViewModel(MissionItem item, bool isHome = false)
     {

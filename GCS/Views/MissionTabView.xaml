@@ -100,10 +100,12 @@
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="10"/>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="10"/>
-                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="6"/>
+                    <ColumnDefinition Width="52"/>
+                    <ColumnDefinition Width="6"/>
+                    <ColumnDefinition Width="86"/>
+                    <ColumnDefinition Width="6"/>
+                    <ColumnDefinition Width="48"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- Type -->
@@ -121,14 +123,22 @@
                 <!-- Altitude -->
                 <StackPanel Grid.Column="2">
                     <TextBlock Text="ALT (m)" Style="{StaticResource LabelText}"/>
-                    <TextBox Text="{Binding DefaultAltitude, UpdateSourceTrigger=PropertyChanged}" 
+                    <TextBox Text="{Binding DefaultAltitude, UpdateSourceTrigger=PropertyChanged}"
                             Style="{StaticResource ValueInput}" Height="28"/>
                 </StackPanel>
 
+                <!-- Alt frame (applies to all waypoints) -->
+                <StackPanel Grid.Column="4">
+                    <TextBlock Text="FRAME" Style="{StaticResource LabelText}"/>
+                    <ComboBox ItemsSource="{Binding FrameOptions}" DisplayMemberPath="Name"
+                              SelectedValuePath="Value" SelectedValue="{Binding DefaultFrame}"
+                              Height="28" FontSize="11"/>
+                </StackPanel>
+
                 <!-- Radius -->
-                <StackPanel Grid.Column="4" Width="60">
+                <StackPanel Grid.Column="6">
                     <TextBlock Text="RADIUS" Style="{StaticResource LabelText}"/>
-                    <TextBox Text="{Binding DefaultRadius, UpdateSourceTrigger=PropertyChanged}" 
+                    <TextBox Text="{Binding DefaultRadius, UpdateSourceTrigger=PropertyChanged}"
                             Style="{StaticResource ValueInput}" Height="28"/>
                 </StackPanel>
             </Grid>
@@ -150,9 +160,13 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                    <TextBlock Text="EST. TIME:" Foreground="{StaticResource SecondaryText}" FontSize="10" VerticalAlignment="Center"/>
-                    <TextBlock Text="{Binding EstimatedTime}" Foreground="{StaticResource AccentOrange}" 
+                    <TextBlock Text="ETA:" Foreground="{StaticResource SecondaryText}" FontSize="10" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding EstimatedTime}" Foreground="{StaticResource AccentOrange}"
                               FontSize="12" FontWeight="Bold" Margin="6,0,0,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="@" Foreground="{StaticResource SecondaryText}" FontSize="10" Margin="8,0,4,0" VerticalAlignment="Center"/>
+                    <TextBox Text="{Binding CruiseSpeedMps, UpdateSourceTrigger=PropertyChanged}"
+                             Style="{StaticResource ValueInput}" Width="34" Height="22" FontSize="10" Padding="4,1"/>
+                    <TextBlock Text="m/s" Foreground="{StaticResource SecondaryText}" FontSize="10" Margin="4,0,0,0" VerticalAlignment="Center"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -186,9 +200,13 @@
                     </Grid>
                 </Border>
 
-                <!-- Waypoint Items -->
-                <ListBox Grid.Row="1" ItemsSource="{Binding Waypoints}" SelectedIndex="{Binding SelectedIndex}"
-                        Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <!-- Waypoint Items (drag to reorder) -->
+                <ListBox x:Name="WaypointList" Grid.Row="1" ItemsSource="{Binding Waypoints}" SelectedIndex="{Binding SelectedIndex}"
+                        Background="Transparent" BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                        AllowDrop="True"
+                        PreviewMouseLeftButtonDown="WaypointList_PreviewMouseLeftButtonDown"
+                        PreviewMouseMove="WaypointList_PreviewMouseMove"
+                        Drop="WaypointList_Drop">
                     <ListBox.ItemContainerStyle>
                         <Style TargetType="ListBoxItem">
                             <Setter Property="Padding" Value="8,5"/>
@@ -251,6 +269,8 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
                 <!-- Edit Header -->
@@ -305,14 +325,57 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="2">
-                        <TextBlock Text="RADIUS (m)" Style="{StaticResource LabelText}"/>
-                        <TextBox Text="{Binding SelectedWaypoint.Radius, StringFormat=F1, UpdateSourceTrigger=PropertyChanged}" 
+                        <TextBlock Text="{Binding SelectedWaypoint.Param2Label}" Style="{StaticResource LabelText}"/>
+                        <TextBox Text="{Binding SelectedWaypoint.Radius, StringFormat=F1, UpdateSourceTrigger=PropertyChanged}"
                                 Style="{StaticResource ValueInput}" Height="26" FontSize="10"/>
                     </StackPanel>
 
-                    <Button Grid.Column="4" Content="APPLY" Command="{Binding ApplyEditCommand}" 
-                           Style="{StaticResource SmallButton}" Background="{StaticResource AccentBlue}" 
+                    <Button Grid.Column="4" Content="APPLY" Command="{Binding ApplyEditCommand}"
+                           Style="{StaticResource SmallButton}" Background="{StaticResource AccentBlue}"
                            VerticalAlignment="Bottom" Width="60"/>
+                </Grid>
+
+                <!-- Edit Fields Row 3: altitude frame + param1 -->
+                <Grid Grid.Row="3" Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="ALT FRAME" Style="{StaticResource LabelText}"/>
+                        <ComboBox ItemsSource="{Binding FrameOptions}" DisplayMemberPath="Name"
+                                  SelectedValuePath="Value" SelectedValue="{Binding SelectedWaypoint.Frame}"
+                                  Height="26" FontSize="10"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="{Binding SelectedWaypoint.Param1Label}" Style="{StaticResource LabelText}"/>
+                        <TextBox Text="{Binding SelectedWaypoint.Param1, StringFormat=F2, UpdateSourceTrigger=PropertyChanged}"
+                                Style="{StaticResource ValueInput}" Height="26" FontSize="10"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Edit Fields Row 4: param3 + param4 -->
+                <Grid Grid.Row="4" Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="8"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="{Binding SelectedWaypoint.Param3Label}" Style="{StaticResource LabelText}"/>
+                        <TextBox Text="{Binding SelectedWaypoint.Param3, StringFormat=F2, UpdateSourceTrigger=PropertyChanged}"
+                                Style="{StaticResource ValueInput}" Height="26" FontSize="10"/>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="{Binding SelectedWaypoint.Param4Label}" Style="{StaticResource LabelText}"/>
+                        <TextBox Text="{Binding SelectedWaypoint.Param4, StringFormat=F2, UpdateSourceTrigger=PropertyChanged}"
+                                Style="{StaticResource ValueInput}" Height="26" FontSize="10"/>
+                    </StackPanel>
                 </Grid>
             </Grid>
         </Border>
@@ -326,14 +389,18 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
             <Button Grid.Column="0" Content="▲" Command="{Binding MoveUpCommand}" Style="{StaticResource SmallButton}" ToolTip="Move Up"/>
             <Button Grid.Column="1" Content="▼" Command="{Binding MoveDownCommand}" Style="{StaticResource SmallButton}" ToolTip="Move Down"/>
             <Button Grid.Column="2" Content="+▲" Command="{Binding InsertBeforeCommand}" Style="{StaticResource SmallButton}" ToolTip="Insert Before"/>
             <Button Grid.Column="3" Content="+▼" Command="{Binding InsertAfterCommand}" Style="{StaticResource SmallButton}" ToolTip="Insert After"/>
-            <Button Grid.Column="4" Content="🏠" Command="{Binding SetHomeCommand}" Style="{StaticResource SmallButton}" ToolTip="Set as Home"/>
-            <Button Grid.Column="5" Content="✕" Command="{Binding RemoveSelectedCommand}" Style="{StaticResource SmallButton}" 
+            <Button Grid.Column="4" Content="🏠" Command="{Binding SetHomeCommand}" Style="{StaticResource SmallButton}" ToolTip="Make selected the home item"/>
+            <Button Grid.Column="5" Content="🛰" Command="{Binding SetHomeFromVehicleCommand}" Style="{StaticResource SmallButton}" ToolTip="Set home from vehicle GPS"/>
+            <Button Grid.Column="6" Content="⌖" Command="{Binding SetCurrentCommand}" Style="{StaticResource SmallButton}" ToolTip="Set as current waypoint (go here)"/>
+            <Button Grid.Column="7" Content="✕" Command="{Binding RemoveSelectedCommand}" Style="{StaticResource SmallButton}"
                    Background="{StaticResource AccentRed}" ToolTip="Remove Selected"/>
         </Grid>
 

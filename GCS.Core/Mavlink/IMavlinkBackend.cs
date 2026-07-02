@@ -85,6 +85,16 @@ public interface IMavlinkBackend : IDisposable
         bool arm,
         CancellationToken ct = default);
 
+    /// <summary>
+    /// Command the vehicle to fly to a location in GUIDED mode
+    /// (MAV_CMD_DO_REPOSITION with the change-mode flag set).
+    /// </summary>
+    Task SendGuidedGotoAsync(
+        double latitudeDeg,
+        double longitudeDeg,
+        float altitudeMeters,
+        CancellationToken ct = default);
+
     // ═══════════════════════════════════════════════════════════════
     // TX Methods - Parameters
     // ═══════════════════════════════════════════════════════════════

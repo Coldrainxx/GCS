@@ -36,6 +36,7 @@ public static class MavlinkBootstrap
             
             65,  // RC_CHANNELS
             74,  // VFR_HUD
+            75,  // COMMAND_INT (guided goto / DO_REPOSITION)
             76,  // COMMAND_LONG
             77,  // COMMAND_ACK
             253  // STATUSTEXT

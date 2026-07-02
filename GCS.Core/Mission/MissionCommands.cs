@@ -1,4 +1,4 @@
-﻿using GCS.Core.Domain;
+using GCS.Core.Domain;
 using System.Diagnostics;
 using GCS.Core.Mavlink;
 
@@ -15,7 +15,7 @@ internal static class GcsIdentity
 
 public static class MissionClearAllCommand
 {
-    public static byte[] Create(byte targetSys, byte targetComp, ref byte seq)
+    public static byte[] Create(byte targetSys, byte targetComp)
     {
         return Mavlink2Serializer.Build(
             messageId: 45,
@@ -33,7 +33,7 @@ public static class MissionClearAllCommand
 
 public static class MissionCountCommand
 {
-    public static byte[] Create(byte targetSys, byte targetComp, ushort count, ref byte seq)
+    public static byte[] Create(byte targetSys, byte targetComp, ushort count)
     {
         return Mavlink2Serializer.Build(
             messageId: 44,
@@ -52,7 +52,7 @@ public static class MissionCountCommand
 
 public static class MissionRequestListCommand
 {
-    public static byte[] Create(byte targetSys, byte targetComp, ref byte seq)
+    public static byte[] Create(byte targetSys, byte targetComp)
     {
         return Mavlink2Serializer.Build(
             messageId: 43,
@@ -70,7 +70,7 @@ public static class MissionRequestListCommand
 
 public static class MissionRequestIntCommand
 {
-    public static byte[] Create(ushort sequence, byte targetSys, byte targetComp, ref byte seq)
+    public static byte[] Create(ushort sequence, byte targetSys, byte targetComp)
     {
         return Mavlink2Serializer.Build(
             messageId: 51,
@@ -89,7 +89,7 @@ public static class MissionRequestIntCommand
 
 public static class MissionItemIntCommand
 {
-    public static byte[] Create(MissionItem item, byte targetSys, byte targetComp, ref byte seq)
+    public static byte[] Create(MissionItem item, byte targetSys, byte targetComp)
     {
         int latInt = (int)(item.LatitudeDeg * 1e7);
         int lonInt = (int)(item.LongitudeDeg * 1e7);
@@ -124,7 +124,7 @@ public static class MissionItemIntCommand
 
 public static class MissionAckCommand
 {
-    public static byte[] Create(byte targetSys, byte targetComp, byte result, ref byte seq)
+    public static byte[] Create(byte targetSys, byte targetComp, byte result)
     {
         return Mavlink2Serializer.Build(
             messageId: 47,
@@ -136,6 +136,25 @@ public static class MissionAckCommand
                 ["target_component"] = targetComp,
                 ["type"] = result,
                 ["mission_type"] = (byte)0
+            }
+        ).ToArray();
+    }
+}
+
+/// <summary>MISSION_SET_CURRENT (msg 41) - tell the vehicle to go to a mission item.</summary>
+public static class MissionSetCurrentCommand
+{
+    public static byte[] Create(byte targetSys, byte targetComp, ushort sequence)
+    {
+        return Mavlink2Serializer.Build(
+            messageId: 41,
+            sysId: GcsIdentity.SystemId,
+            compId: GcsIdentity.ComponentId,
+            fieldValues: new()
+            {
+                ["target_system"] = targetSys,
+                ["target_component"] = targetComp,
+                ["seq"] = sequence
             }
         ).ToArray();
     }

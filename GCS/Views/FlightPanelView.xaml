@@ -156,9 +156,10 @@
         </Border>
 
         <!-- TABBED PANELS -->
-        <TabControl Grid.Row="1" 
+        <TabControl Grid.Row="1"
                     Style="{StaticResource ModernTabControl}"
-                    Margin="10,5,10,10">
+                    Margin="10,5,10,10"
+                    PreviewMouseWheel="Tabs_PreviewMouseWheel">
 
             <!-- TAB 1: DATA -->
             <TabItem Header="DATA" Style="{StaticResource ModernTabItem}">
@@ -215,6 +216,7 @@
                     <views:MissionTabView DataContext="{Binding DataContext.Mission, RelativeSource={RelativeSource AncestorType=Window}}"/>
                 </ScrollViewer>
             </TabItem>
+
         </TabControl>
     </Grid>
 </UserControl>

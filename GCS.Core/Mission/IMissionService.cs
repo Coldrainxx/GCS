@@ -34,6 +34,9 @@ public interface IMissionService
     /// </summary>
     Task OnMissionItem(MissionItem item, CancellationToken ct);
     Task ClearAsync(CancellationToken ct);
+
+    /// <summary>Tell the vehicle to make a mission item the current target (MISSION_SET_CURRENT).</summary>
+    Task SetCurrentAsync(ushort seq, CancellationToken ct);
     /// <summary>
     /// Called by handler when MISSION_ACK is received.
     /// </summary>

@@ -30,10 +30,37 @@ public partial class MainWindow : Window
     private void LinkButton_Click(object sender, RoutedEventArgs e)
     {
         // Toggle connection popup
-        ConnectionPopup.Visibility = 
-            ConnectionPopup.Visibility == Visibility.Visible 
-                ? Visibility.Collapsed 
+        ConnectionPopup.Visibility =
+            ConnectionPopup.Visibility == Visibility.Visible
+                ? Visibility.Collapsed
                 : Visibility.Visible;
+    }
+
+    private void ParamsButton_Click(object sender, RoutedEventArgs e)
+    {
+        ShowFullScreen(ParamsView.Visibility != Visibility.Visible ? FullScreen.Params : FullScreen.None);
+    }
+
+    private void FirmwareButton_Click(object sender, RoutedEventArgs e)
+    {
+        ShowFullScreen(FirmwarePanel.Visibility != Visibility.Visible ? FullScreen.Firmware : FullScreen.None);
+    }
+
+    private enum FullScreen { None, Params, Firmware }
+
+    /// <summary>
+    /// Show one full-window setup view (or none). The map is a WebView2 (native
+    /// window) that renders above WPF overlays, so we hide the whole main content
+    /// instead of layering over it.
+    /// </summary>
+    private void ShowFullScreen(FullScreen which)
+    {
+        ParamsView.Visibility = which == FullScreen.Params ? Visibility.Visible : Visibility.Collapsed;
+        FirmwarePanel.Visibility = which == FullScreen.Firmware ? Visibility.Visible : Visibility.Collapsed;
+        MainContentGrid.Visibility = which == FullScreen.None ? Visibility.Visible : Visibility.Collapsed;
+
+        if (which != FullScreen.None)
+            ConnectionPopup.Visibility = Visibility.Collapsed;
     }
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e)
