@@ -24,11 +24,34 @@ public sealed record ParameterDef(string[] Names, string Group, string Label, st
             ? $"{Fmt(Min.Value)} – {Fmt(Max.Value)}"
             : "";
 
+    /// <summary>Enumerated value choices (rendered as a dropdown), or null for a numeric field.</summary>
+    public IReadOnlyList<ParamOption>? Options => ParameterOptions.For(Name);
+
+    /// <summary>True when this parameter is a selection (enum) rather than a free number.</summary>
+    public bool HasOptions => Options is { Count: > 0 };
+
+    /// <summary>Bit definitions (rendered as a checkbox list) for a bitmask parameter, else null.</summary>
+    public IReadOnlyList<ParamBit>? Bits => ParameterBitmasks.For(Name);
+
+    /// <summary>True when this parameter is a bitmask (multiple selectable flags).</summary>
+    public bool HasBits => Bits is { Count: > 0 };
+
     public bool Matches(string name) =>
         Names.Any(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
 
     private static string Fmt(double v) => v.ToString("0.####", CultureInfo.InvariantCulture);
 }
+
+/// <summary>One selectable value for an enumerated parameter.</summary>
+public sealed record ParamOption(double Value, string Label)
+{
+    // ToString drives the ComboBox selection-box display (the app's global
+    // ComboBox template doesn't honor DisplayMemberPath for the selected item).
+    public override string ToString() => Label;
+}
+
+/// <summary>One flag of a bitmask parameter. <see cref="Mask"/> is the bit value (1, 2, 4, …).</summary>
+public sealed record ParamBit(int Mask, string Label);
 
 /// <summary>
 /// The parameter list shown on the Parameters tab, with ArduPilot Plane /

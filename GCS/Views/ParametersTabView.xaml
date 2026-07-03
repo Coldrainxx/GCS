@@ -176,31 +176,88 @@
                         </Style>
                     </DataGridTextColumn.ElementStyle>
                 </DataGridTextColumn>
-                <DataGridTemplateColumn Header="VALUE" Width="140">
+                <DataGridTemplateColumn Header="VALUE" Width="200">
                     <DataGridTemplateColumn.CellTemplate>
                         <DataTemplate>
-                            <TextBox Text="{Binding EditValue, UpdateSourceTrigger=LostFocus}"
-                                     MinWidth="120" Background="#0D1117" BorderBrush="{StaticResource Border}"
-                                     BorderThickness="1" Foreground="{StaticResource Primary}"
-                                     FontFamily="Consolas" FontSize="13" Padding="6,3" TextAlignment="Right"
-                                     CaretBrush="{StaticResource Cyan}"
-                                     ToolTip="{Binding Description}">
-                                <TextBox.Style>
-                                    <Style TargetType="TextBox">
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsDirty}" Value="True">
-                                                <Setter Property="BorderBrush" Value="{StaticResource Orange}"/>
-                                                <Setter Property="Foreground" Value="{StaticResource Orange}"/>
-                                            </DataTrigger>
-                                            <DataTrigger Binding="{Binding IsOutOfRange}" Value="True">
-                                                <Setter Property="BorderBrush" Value="#F85149"/>
-                                                <Setter Property="Foreground" Value="#F85149"/>
-                                                <Setter Property="BorderThickness" Value="2"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBox.Style>
-                            </TextBox>
+                            <Grid>
+                                <!-- Numeric editor (shown when the param has no fixed choices) -->
+                                <TextBox Text="{Binding EditValue, UpdateSourceTrigger=LostFocus}"
+                                         MinWidth="120" Background="#0D1117" BorderBrush="{StaticResource Border}"
+                                         BorderThickness="1" Foreground="{StaticResource Primary}"
+                                         FontFamily="Consolas" FontSize="13" Padding="6,3" TextAlignment="Right"
+                                         CaretBrush="{StaticResource Cyan}"
+                                         ToolTip="{Binding Description}">
+                                    <TextBox.Style>
+                                        <Style TargetType="TextBox">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding HasOptions}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding HasBits}" Value="True">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsDirty}" Value="True">
+                                                    <Setter Property="BorderBrush" Value="{StaticResource Orange}"/>
+                                                    <Setter Property="Foreground" Value="{StaticResource Orange}"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsOutOfRange}" Value="True">
+                                                    <Setter Property="BorderBrush" Value="#F85149"/>
+                                                    <Setter Property="Foreground" Value="#F85149"/>
+                                                    <Setter Property="BorderThickness" Value="2"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBox.Style>
+                                </TextBox>
+
+                                <!-- Enum selector (shown for parameters with a fixed set of values) -->
+                                <ComboBox ItemsSource="{Binding Options}"
+                                          SelectedValue="{Binding EditValue, Mode=TwoWay}"
+                                          SelectedValuePath="Value"
+                                          DisplayMemberPath="Label"
+                                          FontSize="12"
+                                          ToolTip="{Binding Description}"
+                                          Visibility="{Binding HasOptions, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                                <!-- Bitmask editor (checkbox popup) for *_OPTIONS parameters -->
+                                <Grid Visibility="{Binding HasBits, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <ToggleButton x:Name="BitButton"
+                                                  MinWidth="120" Height="26"
+                                                  Background="#0D1117" Foreground="{StaticResource Primary}"
+                                                  BorderBrush="{StaticResource Border}" BorderThickness="1"
+                                                  Padding="6,0" Cursor="Hand"
+                                                  HorizontalContentAlignment="Stretch"
+                                                  ToolTip="{Binding Description}">
+                                        <DockPanel LastChildFill="True">
+                                            <Path DockPanel.Dock="Right" Data="M 0 0 L 4 4 L 8 0 Z"
+                                                  Fill="#8B949E" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                            <TextBlock Text="{Binding BitmaskSummary}" TextTrimming="CharacterEllipsis"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{StaticResource Primary}" FontSize="11"/>
+                                        </DockPanel>
+                                    </ToggleButton>
+                                    <Popup IsOpen="{Binding IsChecked, ElementName=BitButton, Mode=TwoWay}"
+                                           PlacementTarget="{Binding ElementName=BitButton}"
+                                           Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
+                                           MinWidth="280" MaxWidth="460">
+                                        <Border Background="#1C2128" BorderBrush="{StaticResource Border}"
+                                                BorderThickness="1" CornerRadius="4" Margin="0,2,0,0">
+                                            <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto">
+                                                <ItemsControl ItemsSource="{Binding BitOptions}" Margin="8">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <CheckBox Content="{Binding Label}"
+                                                                      IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                                                      Foreground="{StaticResource Primary}"
+                                                                      Margin="2,4" Cursor="Hand"/>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </ScrollViewer>
+                                        </Border>
+                                    </Popup>
+                                </Grid>
+                            </Grid>
                         </DataTemplate>
                     </DataGridTemplateColumn.CellTemplate>
                 </DataGridTemplateColumn>

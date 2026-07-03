@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using GCS.Parameters;
 
 namespace GCS.ViewModels;
@@ -20,6 +22,35 @@ public sealed class ParameterItemViewModel : ViewModelBase
     public string Description => Def.Description;
     public string Units => Def.Units;
     public string RangeText => Def.RangeText;
+    public bool HasOptions => Def.HasOptions;
+    public IReadOnlyList<ParamOption>? Options => Def.Options;
+    public bool HasBits => Def.HasBits;
+
+    private List<ParameterBitOptionViewModel>? _bitOptions;
+    /// <summary>Checkbox rows for a bitmask parameter (null for non-bitmask params).</summary>
+    public IReadOnlyList<ParameterBitOptionViewModel>? BitOptions
+    {
+        get
+        {
+            if (!HasBits) return null;
+            return _bitOptions ??= Def.Bits!
+                .Select(b => new ParameterBitOptionViewModel(this, b.Mask, b.Label))
+                .ToList();
+        }
+    }
+
+    /// <summary>Human-readable summary of the checked bits, shown on the bitmask button.</summary>
+    public string BitmaskSummary
+    {
+        get
+        {
+            if (!HasBits) return "";
+            long v = (long)EditValue;
+            if (v == 0) return "None";
+            var names = Def.Bits!.Where(b => (v & b.Mask) != 0).Select(b => b.Label).ToList();
+            return names.Count > 0 ? string.Join(", ", names) : v.ToString();
+        }
+    }
 
     private string? _resolvedName;   // actual name the vehicle reported (may be an alias)
     private float? _onboardValue;
@@ -50,7 +81,20 @@ public sealed class ParameterItemViewModel : ViewModelBase
     public double EditValue
     {
         get => _editValue;
-        set { if (SetProperty(ref _editValue, value)) { OnPropertyChanged(nameof(IsDirty)); OnPropertyChanged(nameof(IsOutOfRange)); } }
+        set
+        {
+            if (SetProperty(ref _editValue, value))
+            {
+                OnPropertyChanged(nameof(IsDirty));
+                OnPropertyChanged(nameof(IsOutOfRange));
+                if (HasBits)
+                {
+                    if (_bitOptions != null)
+                        foreach (var b in _bitOptions) b.Refresh();
+                    OnPropertyChanged(nameof(BitmaskSummary));
+                }
+            }
+        }
     }
 
     public string OnboardText => HasValue
