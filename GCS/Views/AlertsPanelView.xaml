@@ -150,17 +150,16 @@
 
             <!-- ═══ CENTER: Message Ticker ═══ -->
             <Grid Grid.Column="2" VerticalAlignment="Center" Margin="4,0">
-                <!-- Latest autopilot message -->
-                <TextBlock FontSize="11" FontFamily="Consolas"
-                          TextTrimming="CharacterEllipsis"
-                          VerticalAlignment="Center">
+                <!-- Placeholder — only shown when there is no message -->
+                <TextBlock Text="No messages" FontSize="11" FontFamily="Consolas"
+                          TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                          Foreground="{StaticResource TextSecondary}">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
-                            <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
-                            <Setter Property="Text" Value="No messages"/>
+                            <Setter Property="Visibility" Value="Collapsed"/>
                             <Style.Triggers>
                                 <DataTrigger Binding="{Binding LatestMessage}" Value="">
-                                    <Setter Property="Text" Value="No messages"/>
+                                    <Setter Property="Visibility" Value="Visible"/>
                                 </DataTrigger>
                             </Style.Triggers>
                         </Style>

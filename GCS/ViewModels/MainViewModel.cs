@@ -51,6 +51,7 @@ public class MainViewModel : ViewModelBase, IDisposable
     public FailsafeViewModel Failsafe { get; }
     public ParametersViewModel Parameters { get; }
     public FirmwareViewModel Firmware { get; }
+    public SetupViewModel Setup { get; }
     public ToastsViewModel Toasts { get; } = new();
 
     // ═══════════════════════════════════════════════════════════════
@@ -114,6 +115,28 @@ public class MainViewModel : ViewModelBase, IDisposable
                 Connection.SetDisconnected();
             });
 
+        Setup = new SetupViewModel(
+            setParam: async (name, value) =>
+            {
+                var backend = _session?.Backend;
+                if (backend != null)
+                    await backend.SetParameterAsync(name, value);
+            },
+            requestParam: async (name) =>
+            {
+                var backend = _session?.Backend;
+                if (backend != null)
+                    await backend.RequestParameterAsync(name);
+            },
+            sendCommand: async (cmd, p1, p2, p3, p4, p5, p6, p7) =>
+            {
+                var backend = _session?.Backend;
+                if (backend != null)
+                    await backend.SendCommandLongAsync(cmd, p1, p2, p3, p4, p5, p6, p7);
+            },
+            failsafe: Failsafe,
+            firmware: Firmware);
+
         Connection.ConnectRequested += OnConnectRequested;
         Connection.DisconnectRequested += OnDisconnectRequested;
     }
@@ -153,6 +176,9 @@ public class MainViewModel : ViewModelBase, IDisposable
         _session.TransportStateChanged += OnTransportStateChanged;
         _session.AutopilotMessageReceived += OnAutopilotMessage;
         _session.RcChannelsReceived += OnRcChannelsReceived;
+        _session.ServoOutputReceived += OnServoOutputReceived;
+        _session.MagCalProgressReceived += OnMagCalProgress;
+        _session.MagCalReportReceived += OnMagCalReport;
         _session.ParameterReceived += OnParameterReceived;
         _session.VehicleStateChanged += OnVehicleStateChanged;
         _session.HealthChanged += OnHealthStateChanged;
@@ -169,6 +195,7 @@ public class MainViewModel : ViewModelBase, IDisposable
         Connection.SetConnected();
         Failsafe.UpdateConnectionState(true);
         Parameters.UpdateConnectionState(true);
+        Setup.UpdateConnectionState(true);
         _ = Failsafe.RefreshFailsafeParams();
     }
 
@@ -276,6 +303,7 @@ public class MainViewModel : ViewModelBase, IDisposable
     {
         Failsafe.OnParameterReceived(paramId, value);
         Parameters.OnParameterReceived(paramId, value);
+        Setup.OnParameter(paramId, value);
     }
 
     private void OnTransportStateChanged(TransportState state)
@@ -354,12 +382,22 @@ public class MainViewModel : ViewModelBase, IDisposable
     {
         Messages.AddMessage(message);
         Alerts.OnAutopilotMessage(message);
+        Setup.OnMessage(message);
     }
 
     private void OnRcChannelsReceived(RcChannelsData data)
     {
         RcChannels.UpdateChannels(data);
+        Setup.OnRcChannels(data);
     }
+
+    private void OnServoOutputReceived(ServoOutputData data)
+    {
+        Setup.OnServoOutput(data);
+    }
+
+    private void OnMagCalProgress(MagCalProgressData data) => Setup.OnMagCalProgress(data);
+    private void OnMagCalReport(MagCalReportData data) => Setup.OnMagCalReport(data);
 
     // ═══════════════════════════════════════════════════════════════
     // Cleanup
@@ -372,6 +410,9 @@ public class MainViewModel : ViewModelBase, IDisposable
             _session.TransportStateChanged -= OnTransportStateChanged;
             _session.AutopilotMessageReceived -= OnAutopilotMessage;
             _session.RcChannelsReceived -= OnRcChannelsReceived;
+            _session.ServoOutputReceived -= OnServoOutputReceived;
+            _session.MagCalProgressReceived -= OnMagCalProgress;
+            _session.MagCalReportReceived -= OnMagCalReport;
             _session.ParameterReceived -= OnParameterReceived;
             _session.VehicleStateChanged -= OnVehicleStateChanged;
             _session.HealthChanged -= OnHealthStateChanged;
@@ -384,6 +425,7 @@ public class MainViewModel : ViewModelBase, IDisposable
 
         Failsafe.UpdateConnectionState(false);
         Parameters.UpdateConnectionState(false);
+        Setup.UpdateConnectionState(false);
     }
 
     public async Task ShutdownAsync()

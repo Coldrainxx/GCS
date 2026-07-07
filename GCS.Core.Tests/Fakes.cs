@@ -41,6 +41,9 @@ internal sealed class FakeBackend : IMavlinkBackend
     public event Action<VfrHudState>? VfrHudReceived;
     public event Action<BatteryState>? BatteryReceived;
     public event Action<RcChannelsData>? RcChannelsReceived;
+    public event Action<ServoOutputData>? ServoOutputReceived;
+    public event Action<MagCalProgressData>? MagCalProgressReceived;
+    public event Action<MagCalReportData>? MagCalReportReceived;
     public event Action<GpsState>? GpsStateReceived;
     public event Action<AutopilotMessage>? AutopilotMessageReceived;
     public event Action<ushort>? MissionCountReceived;

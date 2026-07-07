@@ -16,6 +16,9 @@ public interface IMavlinkBackend : IDisposable
     event Action<VfrHudState>? VfrHudReceived;
     event Action<BatteryState>? BatteryReceived;
     event Action<RcChannelsData>? RcChannelsReceived;
+    event Action<ServoOutputData>? ServoOutputReceived;
+    event Action<MagCalProgressData>? MagCalProgressReceived;
+    event Action<MagCalReportData>? MagCalReportReceived;
     event Action<GpsState>? GpsStateReceived;  // ← ADD THIS
 
     // ═══════════════════════════════════════════════════════════════

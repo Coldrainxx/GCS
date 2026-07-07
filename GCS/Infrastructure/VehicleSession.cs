@@ -63,6 +63,9 @@ public sealed class VehicleSession : IAsyncDisposable
     public event Action<TransportState>? TransportStateChanged;
     public event Action<AutopilotMessage>? AutopilotMessageReceived;
     public event Action<RcChannelsData>? RcChannelsReceived;
+    public event Action<ServoOutputData>? ServoOutputReceived;
+    public event Action<MagCalProgressData>? MagCalProgressReceived;
+    public event Action<MagCalReportData>? MagCalReportReceived;
     public event Action<string, float>? ParameterReceived;
     public event Action<VehicleState>? VehicleStateChanged;
     public event Action<HealthState>? HealthChanged;
@@ -87,6 +90,9 @@ public sealed class VehicleSession : IAsyncDisposable
         _backend.TransportStateChanged += RaiseTransportState;
         _backend.AutopilotMessageReceived += RaiseAutopilotMessage;
         _backend.RcChannelsReceived += RaiseRcChannels;
+        _backend.ServoOutputReceived += RaiseServoOutput;
+        _backend.MagCalProgressReceived += RaiseMagCalProgress;
+        _backend.MagCalReportReceived += RaiseMagCalReport;
         _backend.ParameterReceived += RaiseParameter;
         _stateStore.StateChanged += RaiseVehicleState;
         _healthMonitor.HealthChanged += RaiseHealth;
@@ -126,6 +132,9 @@ public sealed class VehicleSession : IAsyncDisposable
     private void RaiseTransportState(TransportState s) => TransportStateChanged?.Invoke(s);
     private void RaiseAutopilotMessage(AutopilotMessage m) => AutopilotMessageReceived?.Invoke(m);
     private void RaiseRcChannels(RcChannelsData d) => RcChannelsReceived?.Invoke(d);
+    private void RaiseServoOutput(ServoOutputData d) => ServoOutputReceived?.Invoke(d);
+    private void RaiseMagCalProgress(MagCalProgressData d) => MagCalProgressReceived?.Invoke(d);
+    private void RaiseMagCalReport(MagCalReportData d) => MagCalReportReceived?.Invoke(d);
     private void RaiseParameter(string id, float v) => ParameterReceived?.Invoke(id, v);
     private void RaiseVehicleState(VehicleState s) => VehicleStateChanged?.Invoke(s);
     private void RaiseHealth(HealthState h) => HealthChanged?.Invoke(h);
@@ -143,6 +152,9 @@ public sealed class VehicleSession : IAsyncDisposable
         _backend.TransportStateChanged -= RaiseTransportState;
         _backend.AutopilotMessageReceived -= RaiseAutopilotMessage;
         _backend.RcChannelsReceived -= RaiseRcChannels;
+        _backend.ServoOutputReceived -= RaiseServoOutput;
+        _backend.MagCalProgressReceived -= RaiseMagCalProgress;
+        _backend.MagCalReportReceived -= RaiseMagCalReport;
         _backend.ParameterReceived -= RaiseParameter;
         _stateStore.StateChanged -= RaiseVehicleState;
         _healthMonitor.HealthChanged -= RaiseHealth;

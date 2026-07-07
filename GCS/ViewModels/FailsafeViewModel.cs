@@ -4,105 +4,57 @@ using System.Diagnostics;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using GCS.Parameters;
 
 namespace GCS.ViewModels;
 
+/// <summary>
+/// FailSafe setup, laid out like the Mission Planner Plane screen:
+/// Battery (low voltage / reserved mAh / low timer / action),
+/// Radio (FS PWM / throttle failsafe) and GCS (heartbeat / short / long).
+/// Values are written to the vehicle live as they change (like Mission Planner).
+/// </summary>
 public class FailsafeViewModel : ViewModelBase
 {
     private readonly Func<string, float, Task>? _setParamFunc;
     private readonly Func<string, Task>? _requestParamFunc;
 
-    #region Failsafe Status Properties
+    // Suppresses the live write-back while applying values coming FROM the vehicle.
+    private bool _applying;
 
-    // RC Failsafe (FS_THR_ENABLE)
-    private bool _rcFailsafeEnabled;
-    private bool _rcFailsafeTriggered;
-    private float _rcFailsafeThreshold = 950;
+    private float _battLowVolt;
+    private float _battLowMah;
+    private float _battLowTimer;
+    private double _battAction;
 
-    // Battery Failsafe (FS_BATT_ENABLE / BATT_FS_LOW_ACT)
-    private bool _batteryFailsafeEnabled;
-    private bool _batteryFailsafeTriggered;
-    private float _batteryFailsafeVoltage = 10.5f;
+    private float _fsPwm = 1100;
+    private bool _throttleFailsafe;
 
-    // GPS Failsafe
-    private bool _gpsFailsafeEnabled = true;
-    private bool _gpsFailsafeTriggered;
+    private bool _gcsFailsafe;
+    private bool _failsafeShort;
+    private bool _failsafeLong;
 
-    // GCS Failsafe (FS_GCS_ENABLE)
-    private bool _gcsFailsafeEnabled;
-    private bool _gcsFailsafeTriggered;
-    private float _gcsFailsafeTimeout = 5;
-
-    // General
     private bool _isConnected;
     private bool _isLoading;
     private string _statusMessage = "Not connected";
 
-    public bool RcFailsafeEnabled
-    {
-        get => _rcFailsafeEnabled;
-        set { if (SetProperty(ref _rcFailsafeEnabled, value)) OnPropertyChanged(nameof(RcStatusText)); }
-    }
+    public IReadOnlyList<ParamOption> BatteryActions { get; } =
+        ParameterOptions.For("BATT_FS_LOW_ACT") ?? Array.Empty<ParamOption>();
 
-    public bool RcFailsafeTriggered
-    {
-        get => _rcFailsafeTriggered;
-        set { if (SetProperty(ref _rcFailsafeTriggered, value)) { OnPropertyChanged(nameof(RcStatusText)); OnPropertyChanged(nameof(RcStatusColor)); } }
-    }
+    // ── Battery ──────────────────────────────────────────────────────
+    public float BattLowVolt { get => _battLowVolt; set => SetFloat(ref _battLowVolt, value, nameof(BattLowVolt), "BATT_LOW_VOLT"); }
+    public float BattLowMah { get => _battLowMah; set => SetFloat(ref _battLowMah, value, nameof(BattLowMah), "BATT_LOW_MAH"); }
+    public float BattLowTimer { get => _battLowTimer; set => SetFloat(ref _battLowTimer, value, nameof(BattLowTimer), "BATT_LOW_TIMER"); }
+    public double BattAction { get => _battAction; set => SetDouble(ref _battAction, value, nameof(BattAction), "BATT_FS_LOW_ACT"); }
 
-    public float RcFailsafeThreshold
-    {
-        get => _rcFailsafeThreshold;
-        set => SetProperty(ref _rcFailsafeThreshold, value);
-    }
+    // ── Radio ────────────────────────────────────────────────────────
+    public float FsPwm { get => _fsPwm; set => SetFloat(ref _fsPwm, value, nameof(FsPwm), "THR_FS_VALUE"); }
+    public bool ThrottleFailsafe { get => _throttleFailsafe; set => SetBool(ref _throttleFailsafe, value, nameof(ThrottleFailsafe), "THR_FAILSAFE"); }
 
-    public bool BatteryFailsafeEnabled
-    {
-        get => _batteryFailsafeEnabled;
-        set { if (SetProperty(ref _batteryFailsafeEnabled, value)) OnPropertyChanged(nameof(BatteryStatusText)); }
-    }
-
-    public bool BatteryFailsafeTriggered
-    {
-        get => _batteryFailsafeTriggered;
-        set { if (SetProperty(ref _batteryFailsafeTriggered, value)) { OnPropertyChanged(nameof(BatteryStatusText)); OnPropertyChanged(nameof(BatteryStatusColor)); } }
-    }
-
-    public float BatteryFailsafeVoltage
-    {
-        get => _batteryFailsafeVoltage;
-        set => SetProperty(ref _batteryFailsafeVoltage, value);
-    }
-
-    public bool GpsFailsafeEnabled
-    {
-        get => _gpsFailsafeEnabled;
-        set { if (SetProperty(ref _gpsFailsafeEnabled, value)) OnPropertyChanged(nameof(GpsStatusText)); }
-    }
-
-    public bool GpsFailsafeTriggered
-    {
-        get => _gpsFailsafeTriggered;
-        set { if (SetProperty(ref _gpsFailsafeTriggered, value)) { OnPropertyChanged(nameof(GpsStatusText)); OnPropertyChanged(nameof(GpsStatusColor)); } }
-    }
-
-    public bool GcsFailsafeEnabled
-    {
-        get => _gcsFailsafeEnabled;
-        set { if (SetProperty(ref _gcsFailsafeEnabled, value)) OnPropertyChanged(nameof(GcsStatusText)); }
-    }
-
-    public bool GcsFailsafeTriggered
-    {
-        get => _gcsFailsafeTriggered;
-        set { if (SetProperty(ref _gcsFailsafeTriggered, value)) { OnPropertyChanged(nameof(GcsStatusText)); OnPropertyChanged(nameof(GcsStatusColor)); } }
-    }
-
-    public float GcsFailsafeTimeout
-    {
-        get => _gcsFailsafeTimeout;
-        set => SetProperty(ref _gcsFailsafeTimeout, value);
-    }
+    // ── GCS ──────────────────────────────────────────────────────────
+    public bool GcsFailsafe { get => _gcsFailsafe; set => SetBool(ref _gcsFailsafe, value, nameof(GcsFailsafe), "FS_GCS_ENABL"); }
+    public bool FailsafeShort { get => _failsafeShort; set => SetBool(ref _failsafeShort, value, nameof(FailsafeShort), "FS_SHORT_ACTN"); }
+    public bool FailsafeLong { get => _failsafeLong; set => SetBool(ref _failsafeLong, value, nameof(FailsafeLong), "FS_LONG_ACTN"); }
 
     public bool IsConnected
     {
@@ -122,32 +74,7 @@ public class FailsafeViewModel : ViewModelBase
         set => SetProperty(ref _statusMessage, value);
     }
 
-    #endregion
-
-    #region Status Display Properties
-
-    public string RcStatusText => RcFailsafeTriggered ? "TRIGGERED!" : (RcFailsafeEnabled ? "ENABLED" : "DISABLED");
-    public string RcStatusColor => RcFailsafeTriggered ? "#F85149" : (RcFailsafeEnabled ? "#3FB950" : "#8B949E");
-
-    public string BatteryStatusText => BatteryFailsafeTriggered ? "TRIGGERED!" : (BatteryFailsafeEnabled ? "ENABLED" : "DISABLED");
-    public string BatteryStatusColor => BatteryFailsafeTriggered ? "#F85149" : (BatteryFailsafeEnabled ? "#3FB950" : "#8B949E");
-
-    public string GpsStatusText => GpsFailsafeTriggered ? "TRIGGERED!" : (GpsFailsafeEnabled ? "ENABLED" : "DISABLED");
-    public string GpsStatusColor => GpsFailsafeTriggered ? "#F85149" : (GpsFailsafeEnabled ? "#3FB950" : "#8B949E");
-
-    public string GcsStatusText => GcsFailsafeTriggered ? "TRIGGERED!" : (GcsFailsafeEnabled ? "ENABLED" : "DISABLED");
-    public string GcsStatusColor => GcsFailsafeTriggered ? "#F85149" : (GcsFailsafeEnabled ? "#3FB950" : "#8B949E");
-
-    #endregion
-
-    #region Commands
-
-    public ICommand ToggleRcFailsafeCommand { get; }
-    public ICommand ToggleBatteryFailsafeCommand { get; }
-    public ICommand ToggleGcsFailsafeCommand { get; }
     public ICommand RefreshCommand { get; }
-
-    #endregion
 
     public FailsafeViewModel() : this(null, null) { }
 
@@ -155,68 +82,71 @@ public class FailsafeViewModel : ViewModelBase
     {
         _setParamFunc = setParamFunc;
         _requestParamFunc = requestParamFunc;
-
-        ToggleRcFailsafeCommand = new AsyncRelayCommand(ToggleRcFailsafe, () => IsConnected && !IsLoading);
-        ToggleBatteryFailsafeCommand = new AsyncRelayCommand(ToggleBatteryFailsafe, () => IsConnected && !IsLoading);
-        ToggleGcsFailsafeCommand = new AsyncRelayCommand(ToggleGcsFailsafe, () => IsConnected && !IsLoading);
         RefreshCommand = new AsyncRelayCommand(RefreshFailsafeParams, () => IsConnected && !IsLoading);
     }
 
-    #region Parameter Handling
+    // ── Live-write helpers ───────────────────────────────────────────
+
+    private void SetFloat(ref float field, float value, string propName, string paramId)
+    {
+        if (Math.Abs(field - value) < 1e-6f) return;
+        field = value;
+        OnPropertyChanged(propName);
+        if (!_applying) Write(paramId, value);
+    }
+
+    private void SetDouble(ref double field, double value, string propName, string paramId)
+    {
+        if (Math.Abs(field - value) < 1e-9) return;
+        field = value;
+        OnPropertyChanged(propName);
+        if (!_applying) Write(paramId, (float)value);
+    }
+
+    private void SetBool(ref bool field, bool value, string propName, string paramId)
+    {
+        if (field == value) return;
+        field = value;
+        OnPropertyChanged(propName);
+        if (!_applying) Write(paramId, value ? 1f : 0f);
+    }
+
+    private async void Write(string paramId, float value)
+    {
+        if (_setParamFunc == null) return;
+        try
+        {
+            await _setParamFunc(paramId, value);
+            StatusMessage = $"{paramId} = {value:0.###}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Write error: {ex.Message}";
+        }
+    }
 
     public void OnParameterReceived(string paramId, float value)
     {
         Application.Current?.Dispatcher?.BeginInvoke(() =>
         {
-            Debug.WriteLine($"[Failsafe] Param received: {paramId} = {value}");
-
-            switch (paramId.ToUpperInvariant())
+            _applying = true;
+            try
             {
-                case "FS_THR_ENABLE":
-                case "THR_FAILSAFE":
-                    RcFailsafeEnabled = value > 0;
-                    break;
-                case "FS_THR_VALUE":
-                case "THR_FS_VALUE":
-                    RcFailsafeThreshold = value;
-                    break;
-
-                case "FS_BATT_ENABLE":
-                case "BATT_FS_LOW_ACT":
-                    BatteryFailsafeEnabled = value > 0;
-                    break;
-                case "FS_BATT_VOLTAGE":
-                case "BATT_LOW_VOLT":
-                    BatteryFailsafeVoltage = value;
-                    break;
-
-                case "FS_GCS_ENABLE":
-                case "FS_GCS_ENABL":
-                    GcsFailsafeEnabled = value > 0;
-                    break;
-                case "FS_GCS_TIMEOUT":
-                    GcsFailsafeTimeout = value;
-                    break;
-
-                case "FS_EKF_ACTION":
-                case "GPS_TYPE":
-                    GpsFailsafeEnabled = value > 0;
-                    break;
+                switch (paramId.ToUpperInvariant())
+                {
+                    case "BATT_LOW_VOLT": BattLowVolt = value; break;
+                    case "BATT_LOW_MAH": BattLowMah = value; break;
+                    case "BATT_LOW_TIMER": BattLowTimer = value; break;
+                    case "BATT_FS_LOW_ACT": BattAction = value; break;
+                    case "THR_FS_VALUE": FsPwm = value; break;
+                    case "THR_FAILSAFE": ThrottleFailsafe = value > 0; break;
+                    case "FS_GCS_ENABL":
+                    case "FS_GCS_ENABLE": GcsFailsafe = value > 0; break;
+                    case "FS_SHORT_ACTN": FailsafeShort = value > 0; break;
+                    case "FS_LONG_ACTN": FailsafeLong = value > 0; break;
+                }
             }
-
-            StatusMessage = "Parameters loaded";
-        });
-    }
-
-    public void OnSysStatusReceived(uint onboardControlSensorsHealth, uint onboardControlSensorsEnabled)
-    {
-        const uint GPS = 0x04;
-        const uint RC_RECEIVER = 0x10000;
-
-        Application.Current?.Dispatcher?.BeginInvoke(() =>
-        {
-            GpsFailsafeTriggered = (onboardControlSensorsEnabled & GPS) != 0 && (onboardControlSensorsHealth & GPS) == 0;
-            RcFailsafeTriggered = (onboardControlSensorsEnabled & RC_RECEIVER) != 0 && (onboardControlSensorsHealth & RC_RECEIVER) == 0;
+            finally { _applying = false; }
         });
     }
 
@@ -225,122 +155,32 @@ public class FailsafeViewModel : ViewModelBase
         if (_requestParamFunc == null) return;
 
         IsLoading = true;
-        StatusMessage = "Loading parameters...";
-
+        StatusMessage = "Loading failsafe parameters…";
         try
         {
-            var paramsToRequest = new[]
+            foreach (var p in new[]
             {
-                "FS_THR_ENABLE", "FS_THR_VALUE",
-                "FS_BATT_ENABLE", "FS_BATT_VOLTAGE", "BATT_FS_LOW_ACT", "BATT_LOW_VOLT",
-                "FS_GCS_ENABLE", "FS_GCS_TIMEOUT",
-                "THR_FAILSAFE", "THR_FS_VALUE"
-            };
-
-            foreach (var param in paramsToRequest)
+                "BATT_LOW_VOLT", "BATT_LOW_MAH", "BATT_LOW_TIMER", "BATT_FS_LOW_ACT",
+                "THR_FS_VALUE", "THR_FAILSAFE",
+                "FS_GCS_ENABL", "FS_SHORT_ACTN", "FS_LONG_ACTN"
+            })
             {
-                await _requestParamFunc(param);
-                await Task.Delay(50);
+                await _requestParamFunc(p);
+                await Task.Delay(40);
             }
-
-            StatusMessage = "Parameters loaded";
+            StatusMessage = "Failsafe parameters loaded";
         }
         catch (Exception ex)
         {
             StatusMessage = $"Error: {ex.Message}";
             Debug.WriteLine($"[Failsafe] Refresh error: {ex.Message}");
         }
-        finally
-        {
-            IsLoading = false;
-        }
+        finally { IsLoading = false; }
     }
-
-    #endregion
-
-    #region Toggle Commands
-
-    private async Task ToggleRcFailsafe()
-    {
-        if (_setParamFunc == null) return;
-
-        try
-        {
-            IsLoading = true;
-            float newValue = RcFailsafeEnabled ? 0 : 1;
-            await _setParamFunc("FS_THR_ENABLE", newValue);
-            RcFailsafeEnabled = !RcFailsafeEnabled;
-            StatusMessage = $"RC Failsafe {(RcFailsafeEnabled ? "enabled" : "disabled")}";
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Error: {ex.Message}";
-        }
-        finally
-        {
-            IsLoading = false;
-        }
-    }
-
-    private async Task ToggleBatteryFailsafe()
-    {
-        if (_setParamFunc == null) return;
-
-        try
-        {
-            IsLoading = true;
-            float newValue = BatteryFailsafeEnabled ? 0 : 1;
-            await _setParamFunc("FS_BATT_ENABLE", newValue);
-            BatteryFailsafeEnabled = !BatteryFailsafeEnabled;
-            StatusMessage = $"Battery Failsafe {(BatteryFailsafeEnabled ? "enabled" : "disabled")}";
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Error: {ex.Message}";
-        }
-        finally
-        {
-            IsLoading = false;
-        }
-    }
-
-    private async Task ToggleGcsFailsafe()
-    {
-        if (_setParamFunc == null) return;
-
-        try
-        {
-            IsLoading = true;
-            float newValue = GcsFailsafeEnabled ? 0 : 1;
-            await _setParamFunc("FS_GCS_ENABLE", newValue);
-            GcsFailsafeEnabled = !GcsFailsafeEnabled;
-            StatusMessage = $"GCS Failsafe {(GcsFailsafeEnabled ? "enabled" : "disabled")}";
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = $"Error: {ex.Message}";
-        }
-        finally
-        {
-            IsLoading = false;
-        }
-    }
-
-    #endregion
 
     public void UpdateConnectionState(bool isConnected)
     {
         IsConnected = isConnected;
-        if (isConnected)
-        {
-            StatusMessage = "Connected - Click Refresh";
-        }
-        else
-        {
-            StatusMessage = "Not connected";
-            RcFailsafeTriggered = false;
-            BatteryFailsafeTriggered = false;
-            GcsFailsafeTriggered = false;
-        }
+        StatusMessage = isConnected ? "Connected — click Refresh to read values" : "Not connected";
     }
 }

@@ -196,14 +196,6 @@
                 </ScrollViewer>
             </TabItem>
 
-            <!-- TAB 6: FAILSAFE -->
-            <TabItem Header="FAILSAFE" Style="{StaticResource ModernTabItem}">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <views:FailsafeTabView DataContext="{Binding DataContext.Failsafe, 
-        RelativeSource={RelativeSource AncestorType=Window}}"/>
-                </ScrollViewer>
-            </TabItem>
-
             <!-- TAB 7: 3D MODEL -->
             <TabItem Header="3D MODEL" Style="{StaticResource ModernTabItem}">
                 <views:Model3DTabView Roll="{Binding Roll}"

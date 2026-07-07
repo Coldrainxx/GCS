@@ -1,0 +1,78 @@
+<UserControl x:Class="GCS.Views.RadioCalibrationView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="600" d:DesignWidth="700">
+    <UserControl.Resources>
+        <Style x:Key="ToolBtn" TargetType="Button">
+            <Setter Property="Background" Value="#1C2128"/>
+            <Setter Property="Foreground" Value="#E6EDF3"/>
+            <Setter Property="BorderBrush" Value="#2D333D"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="RADIO CALIBRATION" Foreground="#39D0D8"
+                   FontSize="16" FontWeight="Bold" Margin="0,0,0,4"/>
+        <TextBlock Grid.Row="1" TextWrapping="Wrap" Foreground="#8B949E" FontSize="12" Margin="0,0,0,14"
+                   Text="With the transmitter on and receiver bound: press Start, move every stick and switch to its extremes, then center the sticks, lower throttle, and press Finish to save RCn_MIN / MAX / TRIM."/>
+
+        <!-- Controls -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Margin="0,0,0,14">
+            <Button Content="▶ START" Style="{StaticResource ToolBtn}" Command="{Binding StartCommand}"
+                    Foreground="#3FB950"/>
+            <Button Content="✔ FINISH &amp; SAVE" Style="{StaticResource ToolBtn}" Margin="8,0,0,0"
+                    Command="{Binding FinishCommand}" Foreground="#39D0D8"/>
+            <Button Content="✕ CANCEL" Style="{StaticResource ToolBtn}" Margin="8,0,0,0"
+                    Command="{Binding CancelCommand}"/>
+            <Border Margin="16,0,0,0" Padding="8,4" CornerRadius="4" VerticalAlignment="Center"
+                    Background="#12351C" Visibility="{Binding IsCalibrating, Converter={StaticResource BoolToVisibilityConverter}}">
+                <TextBlock Text="● CAPTURING" Foreground="#3FB950" FontWeight="Bold" FontSize="12"/>
+            </Border>
+        </StackPanel>
+
+        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <ItemsControl ItemsSource="{Binding Channels}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,0,0,9">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="46"/>
+                                    <ColumnDefinition Width="52"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="110"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Label}" Foreground="#E6EDF3"
+                                           FontWeight="Bold" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1" Text="{Binding PwmText}" Foreground="#39D0D8"
+                                           FontFamily="Consolas" FontSize="13" VerticalAlignment="Center"/>
+                                <ProgressBar Grid.Column="2" Height="16" Minimum="1000" Maximum="2000"
+                                             Value="{Binding Pwm, Mode=OneWay}"
+                                             Background="#0D1117" Foreground="#39D0D8" BorderBrush="#2D333D"
+                                             BorderThickness="1" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="3" Text="{Binding RangeText}" Foreground="#8B949E"
+                                           FontFamily="Consolas" FontSize="12" TextAlignment="Right"
+                                           VerticalAlignment="Center" Margin="8,0,0,0"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="{Binding Status}" Foreground="#8B949E" FontSize="12" Margin="0,10,0,0"/>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

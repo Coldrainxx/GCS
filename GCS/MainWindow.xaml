@@ -125,11 +125,11 @@
                                       Foreground="{StaticResource PrimaryText}"/>
                         </Button>
 
-                        <Button x:Name="FirmwareButton"
+                        <Button x:Name="SetupButton"
                                 Style="{StaticResource ModernButtonStyle}"
                                 Margin="8,0,0,0"
-                                Click="FirmwareButton_Click">
-                            <TextBlock Text="⚡ FIRMWARE"
+                                Click="SetupButton_Click">
+                            <TextBlock Text="🛠 SETUP"
                                       FontWeight="Bold"
                                       FontSize="14"
                                       Foreground="{StaticResource PrimaryText}"/>
@@ -488,8 +488,8 @@
                 </Grid>
             </Border>
 
-            <!-- FULL-WINDOW FIRMWARE VIEW (toggled by the Firmware button) -->
-            <Border x:Name="FirmwarePanel"
+            <!-- FULL-WINDOW SETUP VIEW (Mandatory Hardware; toggled by the Setup button) -->
+            <Border x:Name="SetupPanel"
                     Grid.Row="2"
                     Background="{StaticResource PanelBackground}"
                     Visibility="Collapsed"
@@ -501,17 +501,17 @@
                     </Grid.RowDefinitions>
 
                     <Grid Grid.Row="0" Background="{StaticResource CardBackground}">
-                        <TextBlock Text="FIRMWARE"
+                        <TextBlock Text="SETUP — MANDATORY HARDWARE"
                                    FontWeight="Bold" FontSize="14"
                                    Foreground="{StaticResource AccentCyan}"
                                    VerticalAlignment="Center" Margin="16,10"/>
                         <Button Content="✕ CLOSE"
                                 HorizontalAlignment="Right" Margin="0,6,10,6"
                                 Style="{StaticResource ModernButtonStyle}"
-                                Click="FirmwareButton_Click"/>
+                                Click="SetupButton_Click"/>
                     </Grid>
 
-                    <views:FirmwareView Grid.Row="1" DataContext="{Binding Firmware}"/>
+                    <views:SetupView Grid.Row="1" DataContext="{Binding Setup}"/>
                 </Grid>
             </Border>
 

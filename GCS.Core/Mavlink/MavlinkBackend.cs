@@ -51,6 +51,9 @@ public sealed class MavlinkBackend : IMavlinkBackend
     public event Action<VfrHudState>? VfrHudReceived;
     public event Action<BatteryState>? BatteryReceived;
     public event Action<RcChannelsData>? RcChannelsReceived;
+    public event Action<ServoOutputData>? ServoOutputReceived;
+    public event Action<MagCalProgressData>? MagCalProgressReceived;
+    public event Action<MagCalReportData>? MagCalReportReceived;
 
     // ═══════════════════════════════════════════════════════════════
     // Events - Messages & Acks
@@ -119,6 +122,9 @@ public sealed class MavlinkBackend : IMavlinkBackend
             new VfrHudHandler(s => VfrHudReceived?.Invoke(s)),
             new SysStatusHandler(s => BatteryReceived?.Invoke(s)),
             new RcChannelsHandler(s => RcChannelsReceived?.Invoke(s)),
+            new ServoOutputHandler(s => ServoOutputReceived?.Invoke(s)),
+            new MagCalProgressHandler(s => MagCalProgressReceived?.Invoke(s)),
+            new MagCalReportHandler(s => MagCalReportReceived?.Invoke(s)),
             new MissionRequestHandler(seq => MissionRequestReceived?.Invoke(seq)),
             new GpsRawIntHandler(s => GpsStateReceived?.Invoke(s)),
             // Message handlers

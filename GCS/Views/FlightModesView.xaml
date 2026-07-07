@@ -1,0 +1,101 @@
+<UserControl x:Class="GCS.Views.FlightModesView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="600" d:DesignWidth="700">
+    <UserControl.Resources>
+        <Style x:Key="ToolBtn" TargetType="Button">
+            <Setter Property="Background" Value="#1C2128"/>
+            <Setter Property="Foreground" Value="#E6EDF3"/>
+            <Setter Property="BorderBrush" Value="#2D333D"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="FLIGHT MODES" Foreground="#39D0D8"
+                   FontSize="16" FontWeight="Bold" Margin="0,0,0,4"/>
+        <TextBlock Grid.Row="1" TextWrapping="Wrap" Foreground="#8B949E" FontSize="12" Margin="0,0,0,16"
+                   Text="Assign a flight mode to each position of the mode switch. The active row highlights as you move the switch."/>
+
+        <!-- Channel + live PWM -->
+        <Border Grid.Row="2" Background="#1C2128" BorderBrush="#2D333D" BorderThickness="1"
+                CornerRadius="6" Padding="14,10" Margin="0,0,0,14">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="MODE CHANNEL (FLTMODE_CH):" Foreground="#8B949E" FontSize="12"
+                           FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                <TextBox Text="{Binding ModeChannel}" Width="50" Background="#0D1117"
+                         Foreground="#E6EDF3" BorderBrush="#2D333D" BorderThickness="1"
+                         Padding="6,3" TextAlignment="Center" FontFamily="Consolas"/>
+                <TextBlock Text="LIVE PWM:" Foreground="#8B949E" FontSize="12" FontWeight="Bold"
+                           VerticalAlignment="Center" Margin="28,0,8,0"/>
+                <TextBlock Text="{Binding CurrentPwm}" Foreground="#39D0D8" FontSize="16"
+                           FontWeight="Bold" FontFamily="Consolas" VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 6 mode slots -->
+        <ItemsControl Grid.Row="3" ItemsSource="{Binding Slots}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <Border Margin="0,0,0,8" CornerRadius="6" BorderThickness="1" Padding="14,10">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="#1C2128"/>
+                                <Setter Property="BorderBrush" Value="#2D333D"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                        <Setter Property="Background" Value="#12351C"/>
+                                        <Setter Property="BorderBrush" Value="#3FB950"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="90"/>
+                                <ColumnDefinition Width="140"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" FontWeight="Bold" Foreground="#E6EDF3">
+                                <Run Text="Mode "/><Run Text="{Binding Number, Mode=OneWay}"/>
+                            </TextBlock>
+                            <TextBlock Grid.Column="1" Text="{Binding PwmRange}" VerticalAlignment="Center"
+                                       Foreground="#8B949E" FontFamily="Consolas" FontSize="12"/>
+                            <ComboBox Grid.Column="2" Margin="4,0,0,0"
+                                      ItemsSource="{Binding DataContext.Modes, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                      SelectedValue="{Binding ModeValue, Mode=TwoWay}"
+                                      SelectedValuePath="Value" DisplayMemberPath="Label"/>
+                            <TextBlock Grid.Column="3" Text="◀ ACTIVE" Foreground="#3FB950" FontWeight="Bold"
+                                       FontSize="12" VerticalAlignment="Center" Margin="12,0,0,0"
+                                       Visibility="{Binding IsActive, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Actions -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0,14,0,0">
+            <Button Content="⟳ READ" Style="{StaticResource ToolBtn}" Command="{Binding RefreshCommand}"/>
+            <Button Content="✔ WRITE MODES" Style="{StaticResource ToolBtn}" Margin="8,0,0,0"
+                    Command="{Binding WriteCommand}" Foreground="#3FB950"/>
+            <TextBlock Text="{Binding Status}" Foreground="#8B949E" FontSize="12"
+                       VerticalAlignment="Center" Margin="16,0,0,0"/>
+        </StackPanel>
+    </Grid>
+</UserControl>

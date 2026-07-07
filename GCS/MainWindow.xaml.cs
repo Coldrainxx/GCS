@@ -41,12 +41,12 @@ public partial class MainWindow : Window
         ShowFullScreen(ParamsView.Visibility != Visibility.Visible ? FullScreen.Params : FullScreen.None);
     }
 
-    private void FirmwareButton_Click(object sender, RoutedEventArgs e)
+    private void SetupButton_Click(object sender, RoutedEventArgs e)
     {
-        ShowFullScreen(FirmwarePanel.Visibility != Visibility.Visible ? FullScreen.Firmware : FullScreen.None);
+        ShowFullScreen(SetupPanel.Visibility != Visibility.Visible ? FullScreen.Setup : FullScreen.None);
     }
 
-    private enum FullScreen { None, Params, Firmware }
+    private enum FullScreen { None, Params, Setup }
 
     /// <summary>
     /// Show one full-window setup view (or none). The map is a WebView2 (native
@@ -56,7 +56,7 @@ public partial class MainWindow : Window
     private void ShowFullScreen(FullScreen which)
     {
         ParamsView.Visibility = which == FullScreen.Params ? Visibility.Visible : Visibility.Collapsed;
-        FirmwarePanel.Visibility = which == FullScreen.Firmware ? Visibility.Visible : Visibility.Collapsed;
+        SetupPanel.Visibility = which == FullScreen.Setup ? Visibility.Visible : Visibility.Collapsed;
         MainContentGrid.Visibility = which == FullScreen.None ? Visibility.Visible : Visibility.Collapsed;
 
         if (which != FullScreen.None)

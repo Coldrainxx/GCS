@@ -1,292 +1,129 @@
-﻿<UserControl x:Class="GCS.Views.FailsafeTabView"
+<UserControl x:Class="GCS.Views.FailsafeTabView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             mc:Ignorable="d" 
-             d:DesignHeight="600" d:DesignWidth="480">
-
+             mc:Ignorable="d"
+             d:DesignHeight="620" d:DesignWidth="440">
     <UserControl.Resources>
-        <SolidColorBrush x:Key="CardBackground" Color="#1C2128"/>
-        <SolidColorBrush x:Key="BorderBrush" Color="#2D333D"/>
-        <SolidColorBrush x:Key="PrimaryText" Color="#E6EDF3"/>
-        <SolidColorBrush x:Key="SecondaryText" Color="#8B949E"/>
-        <SolidColorBrush x:Key="AccentGreen" Color="#3FB950"/>
-        <SolidColorBrush x:Key="AccentOrange" Color="#FF9500"/>
-        <SolidColorBrush x:Key="AccentRed" Color="#F85149"/>
-        <SolidColorBrush x:Key="AccentBlue" Color="#58A6FF"/>
+        <SolidColorBrush x:Key="Fg" Color="#E6EDF3"/>
+        <SolidColorBrush x:Key="Muted" Color="#8B949E"/>
+        <SolidColorBrush x:Key="Line" Color="#2D333D"/>
+        <SolidColorBrush x:Key="Field" Color="#0D1117"/>
+        <SolidColorBrush x:Key="Cyan" Color="#39D0D8"/>
 
-        <!-- Toggle Button Style -->
-        <Style x:Key="ToggleButtonStyle" TargetType="Button">
-            <Setter Property="Width" Value="70"/>
-            <Setter Property="Height" Value="28"/>
-            <Setter Property="FontSize" Value="10"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Cursor" Value="Hand"/>
-            <Setter Property="Foreground" Value="White"/>
+        <!-- Grouped "GroupBox" like Mission Planner -->
+        <Style x:Key="GroupCard" TargetType="HeaderedContentControl">
+            <Setter Property="Foreground" Value="{StaticResource Cyan}"/>
+            <Setter Property="Margin" Value="0,0,0,14"/>
             <Setter Property="Template">
                 <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="border" Background="#2D333D" BorderBrush="{StaticResource BorderBrush}" 
-                                BorderThickness="1" CornerRadius="4">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    <ControlTemplate TargetType="HeaderedContentControl">
+                        <Border Background="#1C2128" BorderBrush="{StaticResource Line}"
+                                BorderThickness="1" CornerRadius="6">
+                            <DockPanel Margin="14,10,14,14">
+                                <TextBlock DockPanel.Dock="Top" Text="{TemplateBinding Header}"
+                                           Foreground="{StaticResource Cyan}" FontWeight="Bold"
+                                           FontSize="13" Margin="0,0,0,10"/>
+                                <ContentPresenter/>
+                            </DockPanel>
                         </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="border" Property="Background" Value="#373E47"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.5"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
         </Style>
 
-        <!-- Status Indicator Converter -->
-        <Style x:Key="StatusEllipse" TargetType="Ellipse">
-            <Setter Property="Width" Value="14"/>
-            <Setter Property="Height" Value="14"/>
-            <Setter Property="Margin" Value="0,0,12,0"/>
+        <Style x:Key="Lbl" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="Num" TargetType="TextBox">
+            <Setter Property="Background" Value="{StaticResource Field}"/>
+            <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource Line}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Width" Value="90"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="TextAlignment" Value="Right"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+        </Style>
+
+        <Style x:Key="Chk" TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource Fg}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Margin" Value="0,5"/>
+            <Setter Property="Cursor" Value="Hand"/>
         </Style>
     </UserControl.Resources>
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Margin="10">
+    <StackPanel Margin="16">
 
-            <!-- Header -->
-            <Grid Margin="5,5,5,10">
+        <!-- Header + refresh -->
+        <Grid Margin="0,0,0,12">
+            <TextBlock Text="FAILSAFE" Foreground="{StaticResource Cyan}" FontWeight="Bold" FontSize="15"/>
+            <Button Content="⟳ READ" HorizontalAlignment="Right" Command="{Binding RefreshCommand}"
+                    Background="#1C2128" Foreground="{StaticResource Fg}" BorderBrush="{StaticResource Line}"
+                    BorderThickness="1" Padding="12,5" FontWeight="Bold" Cursor="Hand"/>
+        </Grid>
+
+        <!-- BATTERY -->
+        <HeaderedContentControl Header="Battery" Style="{StaticResource GroupCard}">
+            <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-                <StackPanel Grid.Column="0">
-                    <TextBlock Text="FAILSAFE STATUS" 
-                              Foreground="{StaticResource SecondaryText}"
-                              FontSize="11"
-                              FontWeight="Bold"/>
-                    <TextBlock Text="{Binding StatusMessage}" 
-                              Foreground="{StaticResource AccentBlue}"
-                              FontSize="10"
-                              Margin="0,4,0,0"/>
-                </StackPanel>
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="Low Battery (V)" Style="{StaticResource Lbl}" Margin="0,0,0,8"/>
+                <TextBox   Grid.Row="0" Grid.Column="1" Style="{StaticResource Num}" Margin="0,0,0,8"
+                           Text="{Binding BattLowVolt, UpdateSourceTrigger=LostFocus, StringFormat=F1}"/>
 
-                <Button Grid.Column="1" Content="⟳ REFRESH" 
-                        Command="{Binding RefreshCommand}"
-                        Style="{StaticResource ToggleButtonStyle}"
-                        Width="80"/>
+                <TextBlock Grid.Row="1" Grid.Column="0" Text="Reserved MAH" Style="{StaticResource Lbl}" Margin="0,0,0,8"/>
+                <TextBox   Grid.Row="1" Grid.Column="1" Style="{StaticResource Num}" Margin="0,0,0,8"
+                           Text="{Binding BattLowMah, UpdateSourceTrigger=LostFocus, StringFormat=F0}"/>
+
+                <TextBlock Grid.Row="2" Grid.Column="0" Text="Low Timer (s)" Style="{StaticResource Lbl}" Margin="0,0,0,10"/>
+                <TextBox   Grid.Row="2" Grid.Column="1" Style="{StaticResource Num}" Margin="0,0,0,10"
+                           Text="{Binding BattLowTimer, UpdateSourceTrigger=LostFocus, StringFormat=F0}"/>
+
+                <ComboBox  Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2"
+                           ItemsSource="{Binding BatteryActions}"
+                           SelectedValue="{Binding BattAction, Mode=TwoWay}"
+                           SelectedValuePath="Value" DisplayMemberPath="Label"/>
             </Grid>
+        </HeaderedContentControl>
 
-            <!-- RC Failsafe -->
-            <Border Background="{StaticResource CardBackground}"
-                    BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="6"
-                    Padding="15"
-                    Margin="5">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <Ellipse Grid.Column="0" Style="{StaticResource StatusEllipse}">
-                        <Ellipse.Fill>
-                            <SolidColorBrush Color="{Binding RcStatusColor}"/>
-                        </Ellipse.Fill>
-                    </Ellipse>
-
-                    <StackPanel Grid.Column="1">
-                        <TextBlock Text="RC FAILSAFE" 
-                                  Foreground="{StaticResource PrimaryText}"
-                                  FontSize="13"
-                                  FontWeight="Bold"/>
-                        <TextBlock Foreground="{StaticResource SecondaryText}" FontSize="10">
-                            <Run Text="Throttle threshold:"/>
-                            <Run Text="{Binding RcFailsafeThreshold, StringFormat=F0}"/>
-                            <Run Text="µs"/>
-                        </TextBlock>
-                    </StackPanel>
-
-                    <TextBlock Grid.Column="2"
-                              Text="{Binding RcStatusText}"
-                              FontSize="10"
-                              FontWeight="Bold"
-                              VerticalAlignment="Center"
-                              Margin="0,0,10,0">
-                        <TextBlock.Foreground>
-                            <SolidColorBrush Color="{Binding RcStatusColor}"/>
-                        </TextBlock.Foreground>
-                    </TextBlock>
-
-                    <Button Grid.Column="3" 
-                            Command="{Binding ToggleRcFailsafeCommand}"
-                            Style="{StaticResource ToggleButtonStyle}">
-                        <Button.Content>
-                            <TextBlock Text="{Binding RcFailsafeEnabled, Converter={StaticResource BoolToOnOffConverter}, FallbackValue=TOGGLE}"/>
-                        </Button.Content>
-                    </Button>
+        <!-- RADIO -->
+        <HeaderedContentControl Header="Radio" Style="{StaticResource GroupCard}">
+            <StackPanel>
+                <Grid Margin="0,0,0,4">
+                    <TextBlock Text="FS Pwm" Style="{StaticResource Lbl}"/>
+                    <TextBox Style="{StaticResource Num}"
+                             Text="{Binding FsPwm, UpdateSourceTrigger=LostFocus, StringFormat=F0}"/>
                 </Grid>
-            </Border>
+                <CheckBox Content="Throttle FailSafe" Style="{StaticResource Chk}"
+                          IsChecked="{Binding ThrottleFailsafe}"/>
+            </StackPanel>
+        </HeaderedContentControl>
 
-            <!-- Battery Failsafe -->
-            <Border Background="{StaticResource CardBackground}"
-                    BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="6"
-                    Padding="15"
-                    Margin="5">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
+        <!-- GCS -->
+        <HeaderedContentControl Header="GCS" Style="{StaticResource GroupCard}">
+            <StackPanel>
+                <CheckBox Content="GCS FailSafe" Style="{StaticResource Chk}" IsChecked="{Binding GcsFailsafe}"/>
+                <CheckBox Content="FailSafe Short (1 sec)" Style="{StaticResource Chk}" IsChecked="{Binding FailsafeShort}"/>
+                <CheckBox Content="FailSafe Long (20 sec)" Style="{StaticResource Chk}" IsChecked="{Binding FailsafeLong}"/>
+            </StackPanel>
+        </HeaderedContentControl>
 
-                    <Ellipse Grid.Column="0" Style="{StaticResource StatusEllipse}">
-                        <Ellipse.Fill>
-                            <SolidColorBrush Color="{Binding BatteryStatusColor}"/>
-                        </Ellipse.Fill>
-                    </Ellipse>
-
-                    <StackPanel Grid.Column="1">
-                        <TextBlock Text="BATTERY FAILSAFE" 
-                                  Foreground="{StaticResource PrimaryText}"
-                                  FontSize="13"
-                                  FontWeight="Bold"/>
-                        <TextBlock Foreground="{StaticResource SecondaryText}" FontSize="10">
-                            <Run Text="Low voltage:"/>
-                            <Run Text="{Binding BatteryFailsafeVoltage, StringFormat=F1}"/>
-                            <Run Text="V"/>
-                        </TextBlock>
-                    </StackPanel>
-
-                    <TextBlock Grid.Column="2"
-                              Text="{Binding BatteryStatusText}"
-                              FontSize="10"
-                              FontWeight="Bold"
-                              VerticalAlignment="Center"
-                              Margin="0,0,10,0">
-                        <TextBlock.Foreground>
-                            <SolidColorBrush Color="{Binding BatteryStatusColor}"/>
-                        </TextBlock.Foreground>
-                    </TextBlock>
-
-                    <Button Grid.Column="3" 
-                            Command="{Binding ToggleBatteryFailsafeCommand}"
-                            Style="{StaticResource ToggleButtonStyle}">
-                        <Button.Content>
-                            <TextBlock Text="{Binding BatteryFailsafeEnabled, Converter={StaticResource BoolToOnOffConverter}, FallbackValue=TOGGLE}"/>
-                        </Button.Content>
-                    </Button>
-                </Grid>
-            </Border>
-
-            <!-- GCS Failsafe -->
-            <Border Background="{StaticResource CardBackground}"
-                    BorderBrush="{StaticResource BorderBrush}"
-                    BorderThickness="1"
-                    CornerRadius="6"
-                    Padding="15"
-                    Margin="5">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                    </Grid.ColumnDefinitions>
-
-                    <Ellipse Grid.Column="0" Style="{StaticResource StatusEllipse}">
-                        <Ellipse.Fill>
-                            <SolidColorBrush Color="{Binding GcsStatusColor}"/>
-                        </Ellipse.Fill>
-                    </Ellipse>
-
-                    <StackPanel Grid.Column="1">
-                        <TextBlock Text="GCS FAILSAFE" 
-                                  Foreground="{StaticResource PrimaryText}"
-                                  FontSize="13"
-                                  FontWeight="Bold"/>
-                        <TextBlock Foreground="{StaticResource SecondaryText}" FontSize="10">
-                            <Run Text="Timeout:"/>
-                            <Run Text="{Binding GcsFailsafeTimeout, StringFormat=F0}"/>
-                            <Run Text="sec"/>
-                        </TextBlock>
-                    </StackPanel>
-
-                    <TextBlock Grid.Column="2"
-                              Text="{Binding GcsStatusText}"
-                              FontSize="10"
-                              FontWeight="Bold"
-                              VerticalAlignment="Center"
-                              Margin="0,0,10,0">
-                        <TextBlock.Foreground>
-                            <SolidColorBrush Color="{Binding GcsStatusColor}"/>
-                        </TextBlock.Foreground>
-                    </TextBlock>
-
-                    <Button Grid.Column="3" 
-                            Command="{Binding ToggleGcsFailsafeCommand}"
-                            Style="{StaticResource ToggleButtonStyle}">
-                        <Button.Content>
-                            <TextBlock Text="{Binding GcsFailsafeEnabled, Converter={StaticResource BoolToOnOffConverter}, FallbackValue=TOGGLE}"/>
-                        </Button.Content>
-                    </Button>
-                </Grid>
-            </Border>
-
-            <!-- Warning Box -->
-            <Border Background="#1A0000"
-                    BorderBrush="{StaticResource AccentRed}"
-                    BorderThickness="1"
-                    CornerRadius="6"
-                    Padding="12"
-                    Margin="5,15,5,5">
-                <StackPanel>
-                    <TextBlock Text="⚠ WARNING" 
-                              Foreground="{StaticResource AccentRed}"
-                              FontSize="11"
-                              FontWeight="Bold"
-                              Margin="0,0,0,6"/>
-                    <TextBlock TextWrapping="Wrap"
-                              Foreground="{StaticResource SecondaryText}"
-                              FontSize="11">
-                        Disabling failsafes can result in loss of aircraft. Only disable for testing purposes and re-enable before flight.
-                    </TextBlock>
-                </StackPanel>
-            </Border>
-
-            <!-- Info Box -->
-            <Border Background="#0A0E14"
-                    BorderBrush="{StaticResource AccentOrange}"
-                    BorderThickness="1"
-                    CornerRadius="6"
-                    Padding="12"
-                    Margin="5">
-                <StackPanel>
-                    <TextBlock Text="ℹ FAILSAFE ACTIONS" 
-                              Foreground="{StaticResource AccentOrange}"
-                              FontSize="11"
-                              FontWeight="Bold"
-                              Margin="0,0,0,6"/>
-                    <TextBlock TextWrapping="Wrap"
-                              Foreground="{StaticResource SecondaryText}"
-                              FontSize="10"
-                              LineHeight="18">
-                        • RC Failsafe: Triggers when RC signal lost (throttle below threshold)
-                        • Battery Failsafe: Triggers when voltage drops below threshold
-                        • GPS Failsafe: Automatic EKF failsafe on GPS loss
-                        • GCS Failsafe: Triggers when telemetry link lost
-                    </TextBlock>
-                </StackPanel>
-            </Border>
-
-        </StackPanel>
-    </ScrollViewer>
+        <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource Muted}" FontSize="12" Margin="2,2,0,0"/>
+    </StackPanel>
 </UserControl>

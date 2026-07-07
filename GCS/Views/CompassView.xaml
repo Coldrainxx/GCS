@@ -1,0 +1,202 @@
+<UserControl x:Class="GCS.Views.CompassView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="760" d:DesignWidth="820">
+    <UserControl.Resources>
+        <Style x:Key="Btn" TargetType="Button">
+            <Setter Property="Background" Value="#1C2128"/>
+            <Setter Property="Foreground" Value="#E6EDF3"/>
+            <Setter Property="BorderBrush" Value="#2D333D"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style x:Key="Hdr" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#8B949E"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+        </Style>
+        <Style x:Key="Cell" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#E6EDF3"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Resources>
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="24">
+            <TextBlock Text="COMPASS" Foreground="#39D0D8" FontSize="16" FontWeight="Bold" Margin="0,0,0,4"/>
+            <TextBlock TextWrapping="Wrap" Foreground="#8B949E" FontSize="12" Margin="0,0,0,12"
+                       Text="Set the compass priority by reordering the compasses (highest at the top). A reboot is required to apply ordering / external / orientation changes."/>
+
+            <!-- Priority table -->
+            <Border Background="#1C2128" BorderBrush="#2D333D" BorderThickness="1" CornerRadius="6" Padding="12,8" Margin="0,0,0,14">
+                <StackPanel>
+                    <Grid Margin="0,0,0,6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="60"/>
+                            <ColumnDefinition Width="80"/>
+                            <ColumnDefinition Width="70"/>
+                            <ColumnDefinition Width="46"/>
+                            <ColumnDefinition Width="66"/>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="70"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="70"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="PRIORITY" Style="{StaticResource Hdr}"/>
+                        <TextBlock Grid.Column="1" Text="DEV ID" Style="{StaticResource Hdr}"/>
+                        <TextBlock Grid.Column="2" Text="BUS TYPE" Style="{StaticResource Hdr}"/>
+                        <TextBlock Grid.Column="3" Text="BUS" Style="{StaticResource Hdr}"/>
+                        <TextBlock Grid.Column="4" Text="ADDRESS" Style="{StaticResource Hdr}"/>
+                        <TextBlock Grid.Column="5" Text="DEV TYPE" Style="{StaticResource Hdr}"/>
+                        <TextBlock Grid.Column="6" Text="EXTERNAL" Style="{StaticResource Hdr}"/>
+                        <TextBlock Grid.Column="7" Text="ORIENTATION" Style="{StaticResource Hdr}"/>
+                        <TextBlock Grid.Column="8" Text="REORDER" Style="{StaticResource Hdr}"/>
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{Binding Devices}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,3" Visibility="{Binding Present, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="60"/>
+                                        <ColumnDefinition Width="80"/>
+                                        <ColumnDefinition Width="70"/>
+                                        <ColumnDefinition Width="46"/>
+                                        <ColumnDefinition Width="66"/>
+                                        <ColumnDefinition Width="110"/>
+                                        <ColumnDefinition Width="70"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="70"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding PriorityText}" Style="{StaticResource Cell}" Foreground="#39D0D8" FontWeight="Bold"/>
+                                    <TextBlock Grid.Column="1" Text="{Binding DevIdText}" Style="{StaticResource Cell}"/>
+                                    <TextBlock Grid.Column="2" Text="{Binding BusTypeText}" Style="{StaticResource Cell}"/>
+                                    <TextBlock Grid.Column="3" Text="{Binding BusText}" Style="{StaticResource Cell}"/>
+                                    <TextBlock Grid.Column="4" Text="{Binding AddressText}" Style="{StaticResource Cell}"/>
+                                    <TextBlock Grid.Column="5" Text="{Binding DevTypeText}" Style="{StaticResource Cell}"/>
+                                    <CheckBox Grid.Column="6" IsChecked="{Binding External}" Cursor="Hand"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    <ComboBox Grid.Column="7" Margin="0,0,8,0" ItemsSource="{Binding Orientations}"
+                                              SelectedValue="{Binding Orientation, Mode=TwoWay}"
+                                              SelectedValuePath="Value" DisplayMemberPath="Label"/>
+                                    <StackPanel Grid.Column="8" Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button Content="▲" Width="28" Style="{StaticResource Btn}" Padding="0,2"
+                                                Command="{Binding DataContext.MoveUpCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}"/>
+                                        <Button Content="▼" Width="28" Style="{StaticResource Btn}" Padding="0,2" Margin="4,0,0,0"
+                                                Command="{Binding DataContext.MoveDownCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                CommandParameter="{Binding}"/>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- Use / learn -->
+            <TextBlock Text="Do you want to disable any of the first 3 compasses?" Foreground="#E6EDF3" FontSize="12" Margin="0,0,0,6"/>
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <CheckBox Content="Use Compass 1" Foreground="#E6EDF3" IsChecked="{Binding UseCompass1}" Cursor="Hand" Margin="0,0,20,0"/>
+                <CheckBox Content="Use Compass 2" Foreground="#E6EDF3" IsChecked="{Binding UseCompass2}" Cursor="Hand" Margin="0,0,20,0"/>
+                <CheckBox Content="Use Compass 3" Foreground="#E6EDF3" IsChecked="{Binding UseCompass3}" Cursor="Hand" Margin="0,0,24,0"/>
+                <CheckBox Content="Automatically learn offsets" Foreground="#E6EDF3" IsChecked="{Binding LearnOffsets}" Cursor="Hand"/>
+            </StackPanel>
+            <TextBlock Text="A reboot is required to adjust the ordering." Foreground="#FF9500" FontSize="11" Margin="0,0,0,8"/>
+
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                <Button Content="⟳ READ" Style="{StaticResource Btn}" Command="{Binding RefreshCommand}"/>
+                <Button Content="⟲ REBOOT" Style="{StaticResource Btn}" Margin="8,0,0,0" Command="{Binding RebootCommand}" Foreground="#FF9500"/>
+            </StackPanel>
+
+            <!-- Onboard Mag Calibration -->
+            <Border Background="#1C2128" BorderBrush="#2D333D" BorderThickness="1" CornerRadius="6" Padding="14">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Margin="0,0,14,0">
+                    <TextBlock Text="Onboard Mag Calibration" Foreground="#39D0D8" FontWeight="Bold" FontSize="13" Margin="0,0,0,10"/>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <Button Content="▶ START" Style="{StaticResource Btn}" Command="{Binding StartCommand}" Foreground="#3FB950"/>
+                        <Button Content="✔ ACCEPT" Style="{StaticResource Btn}" Margin="8,0,0,0" Command="{Binding AcceptCommand}" Foreground="#39D0D8"/>
+                        <Button Content="✕ CANCEL" Style="{StaticResource Btn}" Margin="8,0,0,0" Command="{Binding CancelCommand}"/>
+                    </StackPanel>
+
+                    <ItemsControl ItemsSource="{Binding Mags}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Margin="0,0,0,7"
+                                      Visibility="{Binding Active, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="60"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="150"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="{Binding Name}" Foreground="#E6EDF3" FontWeight="Bold" VerticalAlignment="Center"/>
+                                    <Grid Grid.Column="1">
+                                        <ProgressBar Height="18" Minimum="0" Maximum="100" Value="{Binding Percent}"
+                                                     Background="#0D1117" Foreground="#3FB950" BorderBrush="#2D333D" BorderThickness="1"/>
+                                        <TextBlock Text="{Binding Percent, StringFormat={}{0:0}%}" Foreground="#E6EDF3"
+                                                   FontSize="11" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Grid>
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding StatusText}" Foreground="#8B949E" FontSize="11"/>
+                                        <TextBlock Text="{Binding FitnessText}" Foreground="#39D0D8" FontSize="11" Margin="8,0,0,0"/>
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                        <TextBlock Text="Fitness" Foreground="#8B949E" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <ComboBox Width="130" ItemsSource="{Binding FitnessOptions}" SelectedItem="{Binding Fitness}"/>
+                        <TextBlock Text="Relax fitness if calibration fails" Foreground="#8B949E" FontSize="11"
+                                   VerticalAlignment="Center" Margin="12,0,0,0"/>
+                    </StackPanel>
+                    </StackPanel>
+
+                    <!-- Sample coverage — which directions/axes have been rotated through -->
+                    <Border Grid.Column="1" Width="176" VerticalAlignment="Top"
+                            Background="#0D1117" BorderBrush="#2D333D" BorderThickness="1" CornerRadius="4" Padding="8">
+                        <StackPanel>
+                            <TextBlock Text="COVERAGE" Foreground="#8B949E" FontSize="10" FontWeight="Bold"
+                                       HorizontalAlignment="Center" Margin="0,0,0,6"/>
+                            <ItemsControl ItemsSource="{Binding Coverage}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <UniformGrid Rows="8" Columns="10"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Ellipse Width="12" Height="12" Margin="1.5">
+                                            <Ellipse.Fill>
+                                                <SolidColorBrush Color="{Binding Color}"/>
+                                            </Ellipse.Fill>
+                                        </Ellipse>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="Rotate the vehicle so every dot turns green."
+                                       Foreground="#8B949E" FontSize="10" TextWrapping="Wrap"
+                                       TextAlignment="Center" Margin="0,6,0,0"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <TextBlock Text="{Binding Status}" Foreground="#8B949E" FontSize="12" TextWrapping="Wrap" Margin="0,10,0,0"/>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
