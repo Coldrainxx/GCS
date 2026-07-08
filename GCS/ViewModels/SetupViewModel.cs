@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
 using GCS.Core.Domain;
@@ -17,6 +18,8 @@ public sealed class SetupViewModel : ViewModelBase
     public AccelCalibrationViewModel AccelCal { get; }
     public CompassViewModel Compass { get; }
     public ServoOutputViewModel ServoOutput { get; }
+    public PidTuningViewModel BasicTuning { get; }
+    public PidTuningViewModel ExtendedTuning { get; }
 
     public ObservableCollection<SetupSection> Sections { get; } = new();
 
@@ -39,6 +42,14 @@ public sealed class SetupViewModel : ViewModelBase
         AccelCal = new AccelCalibrationViewModel(sendCommand);
         Compass = new CompassViewModel(setParam, requestParam, sendCommand);
         ServoOutput = new ServoOutputViewModel(setParam, requestParam);
+        BasicTuning = new PidTuningViewModel(
+            "BASIC TUNING",
+            "Fixed-wing attitude controller gains. Read first, then adjust — values are written to the vehicle as you edit.",
+            BasicTuningGroups(), setParam, requestParam);
+        ExtendedTuning = new PidTuningViewModel(
+            "QUADPLANE EXTENDED TUNING",
+            "VTOL rate controller gains (Q_A_RAT_*). Read first, then adjust — values are written live.",
+            ExtendedTuningGroups(), setParam, requestParam);
 
         Sections.Add(new SetupSection("Install Firmware", firmware));
         Sections.Add(new SetupSection("Accel Calibration", AccelCal));
@@ -49,9 +60,54 @@ public sealed class SetupViewModel : ViewModelBase
         var flightModes = new SetupSection("Flight Modes", FlightModes);
         Sections.Add(flightModes);
         Sections.Add(new SetupSection("FailSafe", failsafe));
+        Sections.Add(new SetupSection("Basic Tuning", BasicTuning));
+        Sections.Add(new SetupSection("Extended Tuning", ExtendedTuning));
 
         SelectedSection = flightModes;
     }
+
+    private static IReadOnlyList<PidGroupDef> BasicTuningGroups() => new[]
+    {
+        new PidGroupDef("Servo Roll PID", new[]
+        {
+            new PidFieldDef("P", "RLL_RATE_P"),
+            new PidFieldDef("I", "RLL_RATE_I"),
+            new PidFieldDef("D", "RLL_RATE_D"),
+            new PidFieldDef("INT_MAX", "RLL_RATE_IMAX"),
+        }),
+        new PidGroupDef("Servo Pitch PID", new[]
+        {
+            new PidFieldDef("P", "PTCH_RATE_P"),
+            new PidFieldDef("I", "PTCH_RATE_I"),
+            new PidFieldDef("D", "PTCH_RATE_D"),
+            new PidFieldDef("INT_MAX", "PTCH_RATE_IMAX"),
+        }),
+        new PidGroupDef("Servo Yaw", new[]
+        {
+            new PidFieldDef("Yaw 2 Roll", "YAW2SRV_RLL"),
+            new PidFieldDef("Integral", "YAW2SRV_INT"),
+            new PidFieldDef("Dampening", "YAW2SRV_DAMP"),
+            new PidFieldDef("Integrator Max", "YAW2SRV_IMAX"),
+        }),
+    };
+
+    private static IReadOnlyList<PidGroupDef> ExtendedTuningGroups() => new[]
+    {
+        RateGroup("Rate Roll", "RLL"),
+        RateGroup("Rate Pitch", "PIT"),
+        RateGroup("Rate Yaw", "YAW"),
+    };
+
+    private static PidGroupDef RateGroup(string title, string axis) => new(title, new[]
+    {
+        new PidFieldDef("P", $"Q_A_RAT_{axis}_P"),
+        new PidFieldDef("I", $"Q_A_RAT_{axis}_I"),
+        new PidFieldDef("D", $"Q_A_RAT_{axis}_D"),
+        new PidFieldDef("IMAX", $"Q_A_RAT_{axis}_IMAX"),
+        new PidFieldDef("FLTE", $"Q_A_RAT_{axis}_FLTE"),
+        new PidFieldDef("FLTD", $"Q_A_RAT_{axis}_FLTD"),
+        new PidFieldDef("FLTT", $"Q_A_RAT_{axis}_FLTT"),
+    });
 
     public void OnParameter(string name, float value)
     {
@@ -59,6 +115,8 @@ public sealed class SetupViewModel : ViewModelBase
         RadioCal.OnParameter(name, value);
         ServoOutput.OnParameter(name, value);
         Compass.OnParameter(name, value);
+        BasicTuning.OnParameter(name, value);
+        ExtendedTuning.OnParameter(name, value);
     }
 
     public void OnServoOutput(ServoOutputData data)
@@ -87,6 +145,8 @@ public sealed class SetupViewModel : ViewModelBase
         AccelCal.SetConnected(connected);
         Compass.SetConnected(connected);
         ServoOutput.SetConnected(connected);
+        BasicTuning.SetConnected(connected);
+        ExtendedTuning.SetConnected(connected);
     }
 }
 

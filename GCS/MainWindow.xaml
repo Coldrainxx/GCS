@@ -501,7 +501,7 @@
                     </Grid.RowDefinitions>
 
                     <Grid Grid.Row="0" Background="{StaticResource CardBackground}">
-                        <TextBlock Text="SETUP — MANDATORY HARDWARE"
+                        <TextBlock Text="SETUP"
                                    FontWeight="Bold" FontSize="14"
                                    Foreground="{StaticResource AccentCyan}"
                                    VerticalAlignment="Center" Margin="16,10"/>

@@ -17,7 +17,7 @@
         <!-- LEFT NAV (Mandatory Hardware) -->
         <Border Grid.Column="0" Background="#1C2128" BorderBrush="#2D333D" BorderThickness="0,0,1,0">
             <DockPanel>
-                <TextBlock DockPanel.Dock="Top" Text="MANDATORY HARDWARE"
+                <TextBlock DockPanel.Dock="Top" Text="SETUP"
                            Foreground="#39D0D8" FontWeight="Bold" FontSize="12"
                            Margin="16,14,10,10"/>
                 <ListBox ItemsSource="{Binding Sections}" SelectedItem="{Binding SelectedSection}"
@@ -84,6 +84,9 @@
                 </DataTemplate>
                 <DataTemplate DataType="{x:Type vm:ServoOutputViewModel}">
                     <views:ServoOutputView/>
+                </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:PidTuningViewModel}">
+                    <views:PidTuningView/>
                 </DataTemplate>
                 <DataTemplate DataType="{x:Type vm:FailsafeViewModel}">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
