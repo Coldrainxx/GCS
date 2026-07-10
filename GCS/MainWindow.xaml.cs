@@ -1,5 +1,7 @@
 using GCS.Core.Mavlink;
+using GCS.Core.Settings;
 using GCS.ViewModels;
+using System;
 using System.Windows;
 using System.Windows.Input;
 
@@ -20,11 +22,99 @@ public partial class MainWindow : Window
         _viewModel = new MainViewModel();
         DataContext = _viewModel;
 
+        RestoreWindowState();
+
         MouseLeftButtonDown += (s, e) =>
         {
             if (e.ButtonState == MouseButtonState.Pressed)
                 DragMove();
         };
+
+        KeyDown += OnWindowKeyDown;
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Keyboard shortcuts: Esc closes panels, Ctrl+P params, Ctrl+S setup
+    // ═══════════════════════════════════════════════════════════════
+
+    private void OnWindowKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            if (ParamsView.Visibility == Visibility.Visible ||
+                SetupPanel.Visibility == Visibility.Visible)
+            {
+                ShowFullScreen(FullScreen.None);
+                e.Handled = true;
+            }
+            else if (ConnectionPopup.Visibility == Visibility.Visible)
+            {
+                ConnectionPopup.Visibility = Visibility.Collapsed;
+                e.Handled = true;
+            }
+            return;
+        }
+
+        if (Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            if (e.Key == Key.P)
+            {
+                ParamsButton_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+            }
+            else if (e.Key == Key.S)
+            {
+                SetupButton_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Window / layout state persistence
+    // ═══════════════════════════════════════════════════════════════
+
+    private void RestoreWindowState()
+    {
+        var s = SettingsStore.Current;
+
+        if (s.WindowWidth >= 800 && s.WindowHeight >= 500)
+        {
+            Width = s.WindowWidth;
+            Height = s.WindowHeight;
+        }
+
+        // Restore position only if it lands on a visible screen.
+        if (!double.IsNaN(s.WindowLeft) && !double.IsNaN(s.WindowTop) &&
+            s.WindowLeft >= SystemParameters.VirtualScreenLeft - 8 &&
+            s.WindowTop >= SystemParameters.VirtualScreenTop - 8 &&
+            s.WindowLeft < SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - 100 &&
+            s.WindowTop < SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - 100)
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Left = s.WindowLeft;
+            Top = s.WindowTop;
+        }
+
+        if (s.WindowMaximized)
+            WindowState = WindowState.Maximized;
+
+        if (s.FlightPanelWidth >= 380 && s.FlightPanelWidth <= 900)
+            FlightPanelColumn.Width = new GridLength(s.FlightPanelWidth);
+    }
+
+    private void SaveWindowState()
+    {
+        var s = SettingsStore.Current;
+        bool maximized = WindowState == WindowState.Maximized;
+        var bounds = maximized ? RestoreBounds : new Rect(Left, Top, Width, Height);
+
+        s.WindowMaximized = maximized;
+        s.WindowWidth = bounds.Width;
+        s.WindowHeight = bounds.Height;
+        s.WindowLeft = bounds.Left;
+        s.WindowTop = bounds.Top;
+        s.FlightPanelWidth = FlightPanelColumn.ActualWidth;
     }
 
     private void LinkButton_Click(object sender, RoutedEventArgs e)
@@ -61,6 +151,10 @@ public partial class MainWindow : Window
 
         if (which != FullScreen.None)
             ConnectionPopup.Visibility = Visibility.Collapsed;
+
+        // First open on a connection: pull the parameters automatically.
+        if (which == FullScreen.Params)
+            _viewModel.Parameters.AutoRefreshIfNeeded();
     }
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e)
@@ -82,7 +176,8 @@ public partial class MainWindow : Window
 
     protected override async void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
-        // Clean shutdown
+        // Persist layout, then clean shutdown (ShutdownAsync saves the settings file).
+        SaveWindowState();
         await _viewModel.ShutdownAsync();
         base.OnClosing(e);
     }

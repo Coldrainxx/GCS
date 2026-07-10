@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Input;
+using GCS.Core.Parameters;
 using GCS.Parameters;
 
 namespace GCS.ViewModels;
@@ -55,6 +56,8 @@ public sealed class ParametersViewModel : ViewModelBase
 
     public ICommand RefreshCommand { get; }
     public ICommand WriteAllCommand { get; }
+    public ICommand SaveFileCommand { get; }
+    public ICommand LoadFileCommand { get; }
 
     public ParametersViewModel() : this(null, null) { }
 
@@ -72,6 +75,115 @@ public sealed class ParametersViewModel : ViewModelBase
 
         RefreshCommand = new AsyncRelayCommand(RefreshAsync, () => IsConnected && !IsLoading);
         WriteAllCommand = new AsyncRelayCommand(WriteAllAsync, () => IsConnected && !IsLoading);
+        SaveFileCommand = new RelayCommand(SaveToFile, () => Items.Any(i => i.HasValue));
+        LoadFileCommand = new RelayCommand(LoadFromFile, () => !IsLoading);
+    }
+
+    /// <summary>Kick off a refresh the first time the panel opens on a connection.</summary>
+    public void AutoRefreshIfNeeded()
+    {
+        if (IsConnected && !IsLoading && !Items.Any(i => i.HasValue))
+            _ = RefreshAsync();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // .param file save / load
+    // ═══════════════════════════════════════════════════════════════
+
+    private void SaveToFile()
+    {
+        var loaded = Items.Where(i => i.HasValue).ToList();
+        if (loaded.Count == 0) return;
+
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            Title = "Save parameters",
+            FileName = $"params_{DateTime.Now:yyyyMMdd_HHmm}.param",
+            Filter = "Parameter file (*.param)|*.param|All files (*.*)|*.*",
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        try
+        {
+            // Export the values the vehicle reported (not unwritten edits) —
+            // a backup should reflect the aircraft, not the editor.
+            ParamFile.Save(dialog.FileName,
+                loaded.Select(i => new KeyValuePair<string, float>(i.ResolvedName, i.OnboardValue!.Value)),
+                header: $"{loaded.Count} parameters");
+            StatusMessage = $"Saved {loaded.Count} parameter(s) to {System.IO.Path.GetFileName(dialog.FileName)}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Save failed: {ex.Message}";
+        }
+    }
+
+    private void LoadFromFile()
+    {
+        var dialog = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = "Load parameters",
+            Filter = "Parameter file (*.param)|*.param|All files (*.*)|*.*",
+        };
+        if (dialog.ShowDialog() != true) return;
+
+        List<KeyValuePair<string, float>> fileParams;
+        int skippedLines;
+        try
+        {
+            (fileParams, skippedLines) = ParamFile.Load(dialog.FileName);
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Load failed: {ex.Message}";
+            return;
+        }
+
+        // Match file entries to catalog rows and collect the staged changes.
+        var changes = new List<(ParameterItemViewModel Item, float NewValue)>();
+        int matchedNotLoaded = 0, unknown = 0, unchanged = 0;
+
+        foreach (var p in fileParams)
+        {
+            var item = Items.FirstOrDefault(i => i.Def.Matches(p.Key));
+            if (item == null) { unknown++; continue; }
+            if (!item.HasValue) { matchedNotLoaded++; continue; }
+            if (Math.Abs(item.EditValue - p.Value) < 1e-6) { unchanged++; continue; }
+            changes.Add((item, p.Value));
+        }
+
+        if (changes.Count == 0)
+        {
+            StatusMessage = $"No changes to apply ({unchanged} identical, {matchedNotLoaded} not loaded, {unknown} not in catalog"
+                          + (skippedLines > 0 ? $", {skippedLines} unreadable lines)" : ")");
+            return;
+        }
+
+        // Diff preview before anything is touched.
+        var preview = string.Join("\n", changes.Take(20)
+            .Select(c => $"  {c.Item.ResolvedName}: {c.Item.EditValue:0.####} → {c.NewValue:0.####}"));
+        if (changes.Count > 20) preview += $"\n  … and {changes.Count - 20} more";
+
+        string extras = "";
+        if (matchedNotLoaded > 0) extras += $"\n{matchedNotLoaded} matching parameter(s) aren't loaded from the vehicle — Refresh first to include them.";
+        if (unknown > 0) extras += $"\n{unknown} parameter(s) in the file aren't in this catalog and will be ignored.";
+
+        var choice = MessageBox.Show(
+            $"Apply {changes.Count} value(s) from the file to the editor?\n\n{preview}\n{extras}\n\n" +
+            "Nothing is sent to the vehicle yet — review the changed (orange) rows, then press WRITE ALL.",
+            "Load parameters",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (choice != MessageBoxResult.Yes)
+        {
+            StatusMessage = "Load cancelled";
+            return;
+        }
+
+        foreach (var (item, value) in changes)
+            item.EditValue = value;
+
+        StatusMessage = $"Staged {changes.Count} change(s) from file — press WRITE ALL to send them";
     }
 
     private bool FilterItem(object obj)

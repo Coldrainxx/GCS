@@ -163,6 +163,15 @@ public class ActionsViewModel : ViewModelBase
 
     private async Task ArmAsync()
     {
+        // Arming spins motors on a QuadPlane — always confirm.
+        var confirm = System.Windows.MessageBox.Show(
+            "ARM the vehicle?\n\nMotors may start spinning immediately.",
+            "Confirm ARM",
+            System.Windows.MessageBoxButton.YesNo,
+            System.Windows.MessageBoxImage.Warning,
+            System.Windows.MessageBoxResult.No);
+        if (confirm != System.Windows.MessageBoxResult.Yes) return;
+
         try
         {
             LastCommandResult = "Sending ARM...";
@@ -179,6 +188,18 @@ public class ActionsViewModel : ViewModelBase
 
     private async Task DisarmAsync()
     {
+        // Disarming in flight stops the motors — confirm hard when armed.
+        string message = IsArmed
+            ? "DISARM the vehicle?\n\n⚠ The vehicle is ARMED. If it is flying, the motors WILL STOP."
+            : "DISARM the vehicle?";
+        var confirm = System.Windows.MessageBox.Show(
+            message,
+            "Confirm DISARM",
+            System.Windows.MessageBoxButton.YesNo,
+            IsArmed ? System.Windows.MessageBoxImage.Stop : System.Windows.MessageBoxImage.Question,
+            System.Windows.MessageBoxResult.No);
+        if (confirm != System.Windows.MessageBoxResult.Yes) return;
+
         try
         {
             LastCommandResult = "Sending DISARM...";

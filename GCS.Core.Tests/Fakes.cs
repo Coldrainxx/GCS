@@ -45,6 +45,8 @@ internal sealed class FakeBackend : IMavlinkBackend
     public event Action<MagCalProgressData>? MagCalProgressReceived;
     public event Action<MagCalReportData>? MagCalReportReceived;
     public event Action<GpsState>? GpsStateReceived;
+    public event Action<ReadOnlyMemory<byte>>? RawFrameReceived;
+    public event Action<ReadOnlyMemory<byte>>? RawFrameSent;
     public event Action<AutopilotMessage>? AutopilotMessageReceived;
     public event Action<ushort>? MissionCountReceived;
     public event Action<MissionItem>? MissionItemReceived;

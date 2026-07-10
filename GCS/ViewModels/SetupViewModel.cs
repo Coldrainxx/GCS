@@ -23,11 +23,36 @@ public sealed class SetupViewModel : ViewModelBase
 
     public ObservableCollection<SetupSection> Sections { get; } = new();
 
+    private bool _connected;
+
     private SetupSection? _selected;
     public SetupSection? SelectedSection
     {
         get => _selected;
-        set => SetProperty(ref _selected, value);
+        set { if (SetProperty(ref _selected, value)) AutoRead(value); }
+    }
+
+    /// <summary>Read a section's vehicle values automatically when it's opened while connected.</summary>
+    private void AutoRead(SetupSection? section)
+    {
+        if (!_connected || section == null) return;
+        Func<Task>? read = section.Content switch
+        {
+            FlightModesViewModel fm => fm.RefreshAsync,
+            ServoOutputViewModel so => so.RefreshAsync,
+            CompassViewModel c => c.RefreshAsync,
+            PidTuningViewModel p => p.RefreshAsync,
+            FailsafeViewModel f => f.RefreshFailsafeParams,
+            _ => null
+        };
+        if (read == null) return;
+        _ = SafeReadAsync(read);
+    }
+
+    private static async Task SafeReadAsync(Func<Task> read)
+    {
+        try { await read(); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Setup] Auto-read failed: {ex.Message}"); }
     }
 
     public SetupViewModel(
@@ -140,6 +165,7 @@ public sealed class SetupViewModel : ViewModelBase
 
     public void UpdateConnectionState(bool connected)
     {
+        _connected = connected;
         FlightModes.SetConnected(connected);
         RadioCal.SetConnected(connected);
         AccelCal.SetConnected(connected);
@@ -147,6 +173,9 @@ public sealed class SetupViewModel : ViewModelBase
         ServoOutput.SetConnected(connected);
         BasicTuning.SetConnected(connected);
         ExtendedTuning.SetConnected(connected);
+
+        // Freshly connected: populate whichever section is on screen.
+        if (connected) AutoRead(SelectedSection);
     }
 }
 

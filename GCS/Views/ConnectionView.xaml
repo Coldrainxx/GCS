@@ -159,6 +159,12 @@
                           Foreground="{StaticResource SecondaryText}"
                           FontSize="12" Margin="2,14,0,0"/>
 
+                <CheckBox Content="Record telemetry log (.tlog)"
+                          IsChecked="{Binding TelemetryLogging}"
+                          ToolTip="Saves all MAVLink traffic to Documents\GCS\logs — one file per connection."
+                          Foreground="{StaticResource SecondaryText}"
+                          FontSize="12" Margin="2,8,0,0"/>
+
                 <!-- Status -->
                 <Border Background="#0A0E14" 
                        BorderBrush="{StaticResource BorderBrush}" 

@@ -10,11 +10,20 @@ public sealed class UserSettings
 {
     public List<ConnectionProfile> RecentConnections { get; set; } = new();
     public bool AutoReconnect { get; set; } = true;
+    public bool TelemetryLogging { get; set; } = true;
 
     public float DefaultAltitude { get; set; } = 100;
     public float DefaultRadius { get; set; } = 10;
     public byte DefaultFrame { get; set; } = 3;
     public float CruiseSpeedMps { get; set; } = 15;
+
+    // ── Window / layout state (restored on launch) ──────────────────
+    public double WindowWidth { get; set; }      // 0 = use XAML default
+    public double WindowHeight { get; set; }
+    public double WindowLeft { get; set; } = double.NaN;
+    public double WindowTop { get; set; } = double.NaN;
+    public bool WindowMaximized { get; set; }
+    public double FlightPanelWidth { get; set; } // 0 = use XAML default
 
     private const int MaxRecent = 8;
 

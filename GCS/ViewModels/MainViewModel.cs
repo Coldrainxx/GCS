@@ -154,6 +154,8 @@ public class MainViewModel : ViewModelBase, IDisposable
             await ConnectAsync(config);
             PersistProfile(config);
             Notifier.Success("Connected");
+            if (_session?.TlogPath is string tlog)
+                Notifier.Info($"Recording {System.IO.Path.GetFileName(tlog)}");
         }
         catch (Exception ex)
         {
@@ -189,6 +191,13 @@ public class MainViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(Actions));
         Preflight.SetBackend(_session.Backend);
         Mission.SetMissionService(_session.MissionService);
+
+        if (SettingsStore.Current.TelemetryLogging)
+        {
+            var logDir = System.IO.Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "GCS", "logs");
+            _session.StartTelemetryLog(logDir);
+        }
 
         await _session.StartAsync(CancellationToken.None);
 

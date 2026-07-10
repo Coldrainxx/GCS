@@ -54,6 +54,8 @@ public sealed class MavlinkBackend : IMavlinkBackend
     public event Action<ServoOutputData>? ServoOutputReceived;
     public event Action<MagCalProgressData>? MagCalProgressReceived;
     public event Action<MagCalReportData>? MagCalReportReceived;
+    public event Action<ReadOnlyMemory<byte>>? RawFrameReceived;
+    public event Action<ReadOnlyMemory<byte>>? RawFrameSent;
 
     // ═══════════════════════════════════════════════════════════════
     // Events - Messages & Acks
@@ -204,8 +206,16 @@ public sealed class MavlinkBackend : IMavlinkBackend
             if (!frame.TryParse(frameData.Span))
                 continue;
 
+            RawFrameReceived?.Invoke(frameData);
             _dispatcher.Dispatch(frame);
         }
+    }
+
+    /// <summary>Single TX funnel so every outgoing packet is also logged.</summary>
+    private async Task SendPacketAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
+    {
+        RawFrameSent?.Invoke(data);
+        await _transport.SendAsync(data, ct);
     }
 
     private void OnTransportError(Exception ex)
@@ -268,7 +278,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
             p1: param1, p2: param2, p3: param3, p4: param4,
             p5: param5, p6: param6, p7: param7);
 
-        await _transport.SendAsync(packet, ct);
+        await SendPacketAsync(packet, ct);
     }
 
     public async Task SendSetModeAsync(
@@ -285,7 +295,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
             baseMode: baseMode,
             customMode: customMode);
 
-        await _transport.SendAsync(packet, ct);
+        await SendPacketAsync(packet, ct);
     }
 
     public async Task SendArmDisarmAsync(bool arm, CancellationToken ct = default)
@@ -324,13 +334,13 @@ public sealed class MavlinkBackend : IMavlinkBackend
                 ["z"] = altitudeMeters
             });
 
-        await _transport.SendAsync(packet, ct);
+        await SendPacketAsync(packet, ct);
         Debug.WriteLine($"[MavlinkBackend] Guided goto {latitudeDeg:F6},{longitudeDeg:F6} @ {altitudeMeters}m");
     }
 
     public async Task SendRawAsync(ReadOnlyMemory<byte> packet, CancellationToken ct = default)
     {
-        await _transport.SendAsync(packet, ct);
+        await SendPacketAsync(packet, ct);
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -349,7 +359,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
             paramId: paramId,
             value: value);
 
-        await _transport.SendAsync(packet, ct);
+        await SendPacketAsync(packet, ct);
 
         Debug.WriteLine($"[MavlinkBackend] SetParameter: {paramId} = {value}");
     }
@@ -365,7 +375,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
             senderComp: GcsCompId,
             paramId: paramId);
 
-        await _transport.SendAsync(packet, ct);
+        await SendPacketAsync(packet, ct);
 
         Debug.WriteLine($"[MavlinkBackend] RequestParameter: {paramId}");
     }

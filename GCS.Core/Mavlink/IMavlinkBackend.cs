@@ -21,6 +21,10 @@ public interface IMavlinkBackend : IDisposable
     event Action<MagCalReportData>? MagCalReportReceived;
     event Action<GpsState>? GpsStateReceived;  // ← ADD THIS
 
+    /// <summary>Raw complete MAVLink packets, for telemetry logging (RX / TX).</summary>
+    event Action<ReadOnlyMemory<byte>>? RawFrameReceived;
+    event Action<ReadOnlyMemory<byte>>? RawFrameSent;
+
     // ═══════════════════════════════════════════════════════════════
     // RX Events - Messages & Acks
     // ═══════════════════════════════════════════════════════════════

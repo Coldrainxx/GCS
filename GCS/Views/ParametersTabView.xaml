@@ -61,6 +61,8 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
             <Border Grid.Column="0" Background="{StaticResource Card}" BorderBrush="{StaticResource Border}"
@@ -87,7 +89,11 @@
 
             <Button Grid.Column="1" Content="⟳ REFRESH" Style="{StaticResource ToolButton}"
                     Command="{Binding RefreshCommand}" Margin="0,0,8,0"/>
-            <Button Grid.Column="2" Content="✎ WRITE ALL" Style="{StaticResource ToolButton}"
+            <Button Grid.Column="2" Content="💾 SAVE FILE" Style="{StaticResource ToolButton}"
+                    Command="{Binding SaveFileCommand}" Margin="0,0,8,0"/>
+            <Button Grid.Column="3" Content="📂 LOAD FILE" Style="{StaticResource ToolButton}"
+                    Command="{Binding LoadFileCommand}" Margin="0,0,8,0"/>
+            <Button Grid.Column="4" Content="✎ WRITE ALL" Style="{StaticResource ToolButton}"
                     Command="{Binding WriteAllCommand}"
                     Foreground="{StaticResource Orange}"/>
         </Grid>

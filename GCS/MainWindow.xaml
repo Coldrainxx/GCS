@@ -409,21 +409,26 @@
             <!-- MAIN CONTENT -->
             <Grid x:Name="MainContentGrid" Grid.Row="2">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="500"/>
-                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition x:Name="FlightPanelColumn" Width="500" MinWidth="380" MaxWidth="900"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*" MinWidth="400"/>
                 </Grid.ColumnDefinitions>
 
                 <!-- LEFT PANEL: Flight Data (contains its own TabControl) -->
-                <Border Grid.Column="0" 
-                        Background="{StaticResource PanelBackground}"
-                        BorderBrush="{StaticResource BorderBrush}"
-                        BorderThickness="0,0,1,0">
+                <Border Grid.Column="0"
+                        Background="{StaticResource PanelBackground}">
                     <!-- FlightPanelView is bound to Telemetry and contains all tabs -->
                     <views:FlightPanelView DataContext="{Binding Telemetry}"/>
                 </Border>
 
+                <!-- Drag to resize the flight panel / map split -->
+                <GridSplitter Grid.Column="1" Width="6"
+                              HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                              Background="{StaticResource BorderBrush}"
+                              ShowsPreview="False" Cursor="SizeWE"/>
+
                 <!-- RIGHT PANEL: Map -->
-                <Border Grid.Column="1" 
+                <Border Grid.Column="2"
                         Background="{StaticResource DarkBackground}">
                     <views:MapView DataContext="{Binding Telemetry}"/>
                 </Border>

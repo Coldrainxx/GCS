@@ -1,6 +1,7 @@
 using GCS.Core.Alerts;
 using GCS.Core.Domain;
 using GCS.Core.Health;
+using GCS.Core.Logging;
 using GCS.Core.Mavlink;
 using GCS.Core.Mavlink.Messages;
 using GCS.Core.Mavlink.Tx;
@@ -54,9 +55,33 @@ public sealed class VehicleSession : IAsyncDisposable
 
     private CancellationTokenSource? _cts;
     private bool _disposed;
+    private TelemetryLogger? _tlog;
 
     public IMavlinkBackend Backend => _backend;
     public IMissionService MissionService => _missionService;
+
+    /// <summary>Path of the telemetry log for this session, or null when logging is off.</summary>
+    public string? TlogPath => _tlog?.FilePath;
+
+    /// <summary>Start recording all RX/TX MAVLink traffic to a .tlog file. No-op on failure.</summary>
+    public void StartTelemetryLog(string directory)
+    {
+        if (_tlog != null) return;
+        try
+        {
+            var path = System.IO.Path.Combine(directory, $"gcs_{DateTime.Now:yyyyMMdd_HHmmss}.tlog");
+            _tlog = new TelemetryLogger(path);
+            _backend.RawFrameReceived += OnRawFrame;
+            _backend.RawFrameSent += OnRawFrame;
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[VehicleSession] tlog start failed: {ex.Message}");
+            _tlog = null;
+        }
+    }
+
+    private void OnRawFrame(ReadOnlyMemory<byte> packet) => _tlog?.Write(packet.Span);
 
     // Aggregated events the UI layer subscribes to (single object, symmetric
     // subscribe/unsubscribe). They simply re-raise from the internal services.
@@ -165,6 +190,11 @@ public sealed class VehicleSession : IAsyncDisposable
         _backend.MissionItemReceived -= _onMissionItem;
         _backend.MissionRequestReceived -= _onMissionRequest;
         _backend.MissionAckReceived -= _onMissionAck;
+
+        _backend.RawFrameReceived -= OnRawFrame;
+        _backend.RawFrameSent -= OnRawFrame;
+        _tlog?.Dispose();
+        _tlog = null;
 
         // Dispose engines (reverse construction order), then stop the backend.
         _preflightEngine.Dispose();

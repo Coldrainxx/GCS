@@ -56,6 +56,21 @@ public class ConnectionViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Record all MAVLink traffic to a .tlog file per session (persisted).</summary>
+    public bool TelemetryLogging
+    {
+        get => SettingsStore.Current.TelemetryLogging;
+        set
+        {
+            if (SettingsStore.Current.TelemetryLogging != value)
+            {
+                SettingsStore.Current.TelemetryLogging = value;
+                SettingsStore.Save();
+                OnPropertyChanged();
+            }
+        }
+    }
+
     public ObservableCollection<int> BaudRates { get; } = new()
     {
         9600,
