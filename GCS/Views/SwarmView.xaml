@@ -1,0 +1,325 @@
+<UserControl x:Class="GCS.Views.SwarmView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="800" d:DesignWidth="500">
+    <UserControl.Resources>
+        <Style x:Key="Btn" TargetType="Button">
+            <Setter Property="Background" Value="#1C2128"/>
+            <Setter Property="Foreground" Value="#E6EDF3"/>
+            <Setter Property="BorderBrush" Value="#2D333D"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+        <Style x:Key="Hdr" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#8B949E"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="Num" TargetType="TextBox">
+            <Setter Property="Background" Value="#0D1117"/>
+            <Setter Property="Foreground" Value="#E6EDF3"/>
+            <Setter Property="BorderBrush" Value="#2D333D"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="4,3"/>
+            <Setter Property="Width" Value="52"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="FontFamily" Value="Consolas"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="#1C2128"/>
+            <Setter Property="BorderBrush" Value="#2D333D"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="2,0,0,10">
+            <TextBlock Text="SWARM" Foreground="#39D0D8" FontSize="15" FontWeight="Bold"/>
+            <Border Background="#0D1117" BorderBrush="#2D333D" BorderThickness="1" CornerRadius="9"
+                    Padding="8,1" Margin="10,0,0,0" VerticalAlignment="Center">
+                <TextBlock Text="{Binding CountText}" Foreground="#39D0D8" FontSize="11" FontWeight="Bold"/>
+            </Border>
+
+            <!-- Fleet health: covers every vehicle, not just the selected one -->
+            <Border Background="#2A1416" BorderBrush="#F85149" BorderThickness="1" CornerRadius="9"
+                    Padding="8,1" Margin="8,0,0,0" VerticalAlignment="Center"
+                    Visibility="{Binding FleetHasAlert, Converter={StaticResource BoolToVisibilityConverter}}">
+                <TextBlock Text="{Binding FleetHealthText}" Foreground="#F85149" FontSize="11" FontWeight="Bold"/>
+            </Border>
+        </StackPanel>
+
+        <!-- Group commands -->
+        <Border Grid.Row="1" Style="{StaticResource Card}">
+            <StackPanel>
+                <TextBlock Text="ALL VEHICLES" Style="{StaticResource Hdr}" Margin="0,0,0,8"/>
+                <WrapPanel>
+                    <Button Content="ARM ALL" Style="{StaticResource Btn}" Foreground="#3FB950"
+                            Margin="0,0,6,6" Command="{Binding ArmAllCommand}"/>
+                    <Button Content="DISARM ALL" Style="{StaticResource Btn}" Foreground="#F85149"
+                            Margin="0,0,6,6" Command="{Binding DisarmAllCommand}"/>
+                    <Button Content="RTL ALL" Style="{StaticResource Btn}" Foreground="#FF9500"
+                            Margin="0,0,6,6" Command="{Binding RtlAllCommand}"/>
+                </WrapPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                    <ComboBox Width="120" VerticalAlignment="Center"
+                              ItemsSource="{Binding AvailableModes}"
+                              SelectedIndex="{Binding SelectedModeIndex}"/>
+                    <Button Content="SET MODE ALL" Style="{StaticResource Btn}" Margin="6,0,0,0"
+                            Command="{Binding SetModeAllCommand}"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Formation -->
+        <Border Grid.Row="2" Style="{StaticResource Card}">
+            <StackPanel>
+                <TextBlock Text="FORMATION" Style="{StaticResource Hdr}" Margin="0,0,0,8"/>
+                <ComboBox ItemsSource="{Binding FormationTypes}" SelectedItem="{Binding SelectedFormation}"
+                          Margin="0,0,0,8"/>
+                <WrapPanel Margin="0,0,0,8">
+                    <TextBlock Text="SPACING" Style="{StaticResource Hdr}" Margin="0,0,5,0"/>
+                    <TextBox Style="{StaticResource Num}" Margin="0,0,12,4"
+                             Text="{Binding SpacingM, UpdateSourceTrigger=LostFocus, StringFormat=F0}"/>
+                    <TextBlock Text="ALT STEP" Style="{StaticResource Hdr}" Margin="0,0,5,0"/>
+                    <TextBox Style="{StaticResource Num}" Margin="0,0,12,4"
+                             ToolTip="Vertical separation between followers. 0 puts them all at the leader's altitude."
+                             Text="{Binding VerticalStepM, UpdateSourceTrigger=LostFocus, StringFormat=F0}"/>
+                    <TextBlock Text="MAX DIST" Style="{StaticResource Hdr}" Margin="0,0,5,0"/>
+                    <TextBox Style="{StaticResource Num}" Margin="0,0,0,4"
+                             ToolTip="FOLL_DIST_MAX — a follower gives up beyond this. 0 disables the check."
+                             Text="{Binding MaxDistanceM, UpdateSourceTrigger=LostFocus, StringFormat=F0}"/>
+                </WrapPanel>
+                <WrapPanel>
+                    <Button Content="APPLY FORMATION" Style="{StaticResource Btn}" Foreground="#3FB950"
+                            Margin="0,0,6,0" Command="{Binding ApplyFormationCommand}"/>
+                    <Button Content="STOP FOLLOWING" Style="{StaticResource Btn}"
+                            Command="{Binding StopFollowingCommand}"/>
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Mission -->
+        <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,0,0,10">
+            <StackPanel>
+                <TextBlock Text="MISSION" Style="{StaticResource Hdr}" Margin="0,0,0,8"/>
+                <WrapPanel>
+                    <Button Content="UPLOAD TO LEADER" Style="{StaticResource Btn}" Foreground="#39D0D8"
+                            Margin="0,0,6,0" Command="{Binding UploadMissionToLeaderCommand}"
+                            ToolTip="The leader flies the planned route; followers hold formation on it."/>
+                    <Button Content="UPLOAD TO ALL" Style="{StaticResource Btn}"
+                            Command="{Binding UploadMissionToAllCommand}"
+                            ToolTip="Every vehicle gets the same route and flies it independently."/>
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Vehicle roster -->
+        <Border Grid.Row="4" Background="#151922" BorderBrush="#2D333D" BorderThickness="1" CornerRadius="6">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="VEHICLES" Style="{StaticResource Hdr}" Margin="12,10,0,6"/>
+
+                <TextBlock DockPanel.Dock="Top" Margin="14,20" TextAlignment="Center" TextWrapping="Wrap"
+                           Foreground="#8B949E" FontSize="12"
+                           Text="No vehicles heard yet. Each drone appears here as soon as it heartbeats on the link.">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Count}" Value="0">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+
+                <ListBox ItemsSource="{Binding Vehicles}" SelectedItem="{Binding ActiveVehicle}"
+                         Background="Transparent" BorderThickness="0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         HorizontalContentAlignment="Stretch">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="0"/>
+                            <Setter Property="Cursor" Value="Hand"/>
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border x:Name="B" Background="#1C2128" BorderBrush="#2D333D"
+                                                BorderThickness="1" CornerRadius="5"
+                                                Margin="10,0,10,7" Padding="10,8">
+                                            <ContentPresenter/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="B" Property="Background" Value="#232A33"/>
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter TargetName="B" Property="BorderBrush" Value="#39D0D8"/>
+                                                <Setter TargetName="B" Property="Background" Value="#18242B"/>
+                                            </Trigger>
+                                            <!-- Health outranks selection: a vehicle in trouble
+                                                 must stand out even when another is selected. -->
+                                            <DataTrigger Binding="{Binding AlertLevel}" Value="Warning">
+                                                <Setter TargetName="B" Property="BorderBrush" Value="#FF9500"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding AlertLevel}" Value="Critical">
+                                                <Setter TargetName="B" Property="BorderBrush" Value="#F85149"/>
+                                                <Setter TargetName="B" Property="Background" Value="#2A1416"/>
+                                            </DataTrigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Row 1: name, role, mode, armed -->
+                                <StackPanel Grid.Row="0" Orientation="Horizontal">
+                                    <TextBlock Text="{Binding Name}" Foreground="#E6EDF3"
+                                               FontWeight="Bold" FontSize="13" VerticalAlignment="Center"/>
+
+                                    <Border CornerRadius="3" Padding="5,1" Margin="8,0,0,0" VerticalAlignment="Center">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="#22282F"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsLeader}" Value="True">
+                                                        <Setter Property="Background" Value="#3A2A00"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <TextBlock Text="{Binding RoleText}" FontSize="9" FontWeight="Bold">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#8B949E"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsLeader}" Value="True">
+                                                            <Setter Property="Foreground" Value="#FFB000"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Border>
+
+                                    <TextBlock Text="{Binding FlightMode}" Foreground="#FF9500" FontSize="11"
+                                               FontWeight="Bold" VerticalAlignment="Center" Margin="8,0,0,0"/>
+
+                                    <TextBlock Text="{Binding ArmedText}" FontSize="10" FontWeight="Bold"
+                                               VerticalAlignment="Center" Margin="8,0,0,0">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="#3FB950"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsArmed}" Value="True">
+                                                        <Setter Property="Foreground" Value="#F85149"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+
+                                    <TextBlock Text="◀ ACTIVE" Foreground="#39D0D8" FontSize="9" FontWeight="Bold"
+                                               VerticalAlignment="Center" Margin="8,0,0,0"
+                                               Visibility="{Binding IsActive, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                </StackPanel>
+
+                                <!-- Row 2: telemetry -->
+                                <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,5,0,0">
+                                    <TextBlock Text="{Binding Voltage, StringFormat={}{0:F1}V}"
+                                               Foreground="#E6EDF3" FontFamily="Consolas" FontSize="11"/>
+                                    <TextBlock Text="{Binding BatteryPercent, StringFormat={}{0}%}"
+                                               Foreground="#8B949E" FontFamily="Consolas" FontSize="11" Margin="4,0,0,0"/>
+                                    <TextBlock Text="{Binding AltitudeRel, StringFormat={}{0:F0} m}"
+                                               Foreground="#E6EDF3" FontFamily="Consolas" FontSize="11" Margin="10,0,0,0"/>
+                                    <TextBlock Text="{Binding GroundSpeed, StringFormat={}{0:F1} m/s}"
+                                               Foreground="#E6EDF3" FontFamily="Consolas" FontSize="11" Margin="10,0,0,0"/>
+                                    <TextBlock Text="{Binding GpsFix}" Foreground="#8B949E" FontSize="10"
+                                               VerticalAlignment="Center" Margin="10,0,0,0"/>
+                                    <TextBlock Text="{Binding Satellites, StringFormat={}({0})}"
+                                               Foreground="#39D0D8" FontSize="10" VerticalAlignment="Center" Margin="3,0,0,0"/>
+                                </StackPanel>
+
+                                <!-- Row 3: station / alert + set-leader -->
+                                <Grid Grid.Row="2" Margin="0,6,0,0">
+                                    <!-- An alert replaces the station text: if this
+                                         vehicle is in trouble, that's what matters. -->
+                                    <TextBlock Text="{Binding AlertText}" FontFamily="Consolas" FontSize="10"
+                                               FontWeight="Bold" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               Visibility="{Binding HasAlert, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="#FF9500"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsCritical}" Value="True">
+                                                        <Setter Property="Foreground" Value="#F85149"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding StationText}" Foreground="#8B949E"
+                                               FontFamily="Consolas" FontSize="10" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasAlert}" Value="True">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                    <Button Content="SET LEADER" Style="{StaticResource Btn}" Padding="7,2" FontSize="9"
+                                            HorizontalAlignment="Right"
+                                            Command="{Binding DataContext.MakeLeaderCommand,
+                                                      RelativeSource={RelativeSource AncestorType=ListBox}}"
+                                            CommandParameter="{Binding}"/>
+                                </Grid>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </DockPanel>
+        </Border>
+
+        <TextBlock Grid.Row="5" Text="{Binding Status}" Foreground="#8B949E" FontSize="11"
+                   TextWrapping="Wrap" Margin="2,8,0,0"/>
+    </Grid>
+</UserControl>

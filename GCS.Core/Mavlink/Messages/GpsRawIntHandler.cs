@@ -12,9 +12,9 @@ public sealed class GpsRawIntHandler : IMavlinkMessageHandler
 {
     public uint MessageId => 24;  // GPS_RAW_INT
 
-    private readonly Action<GpsState> _onGpsState;
+    private readonly Action<byte, GpsState> _onGpsState;
 
-    public GpsRawIntHandler(Action<GpsState> onGpsState)
+    public GpsRawIntHandler(Action<byte, GpsState> onGpsState)
     {
         _onGpsState = onGpsState;
     }
@@ -29,6 +29,6 @@ public sealed class GpsRawIntHandler : IMavlinkMessageHandler
             TimestampUtc: DateTime.UtcNow
         );
 
-        _onGpsState(state);
+        _onGpsState(frame.SystemId, state);
     }
 }

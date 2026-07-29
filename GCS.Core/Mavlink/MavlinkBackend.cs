@@ -6,6 +6,7 @@ using GCS.Core.Mavlink.Messages;
 using GCS.Core.Transport;
 using MavLinkSharp;
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,6 +22,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
     private readonly ITransport _transport;
     private readonly MavlinkDispatcher _dispatcher;
     private readonly MavlinkConnectionTracker _connection;
+    private readonly MavlinkVehicleTracker _vehicles;
     private readonly CommandAckTracker _commandAckTracker;
     private readonly MavlinkFrameBuffer _frameBuffer = new();
 
@@ -46,10 +48,12 @@ public sealed class MavlinkBackend : IMavlinkBackend
     // ═══════════════════════════════════════════════════════════════
 
     public event Action<HeartbeatState>? HeartbeatReceived;
-    public event Action<AttitudeState>? AttitudeReceived;
-    public event Action<PositionState>? PositionReceived;
-    public event Action<VfrHudState>? VfrHudReceived;
-    public event Action<BatteryState>? BatteryReceived;
+    // Telemetry events carry the source system id so a shared swarm link can be
+    // demultiplexed into per-vehicle state.
+    public event Action<byte, AttitudeState>? AttitudeReceived;
+    public event Action<byte, PositionState>? PositionReceived;
+    public event Action<byte, VfrHudState>? VfrHudReceived;
+    public event Action<byte, BatteryState>? BatteryReceived;
     public event Action<RcChannelsData>? RcChannelsReceived;
     public event Action<ServoOutputData>? ServoOutputReceived;
     public event Action<MagCalProgressData>? MagCalProgressReceived;
@@ -76,8 +80,8 @@ public sealed class MavlinkBackend : IMavlinkBackend
     // Events - Parameters
     // ═══════════════════════════════════════════════════════════════
 
-    public event Action<string, float>? ParameterReceived;
-    public event Action<GpsState>? GpsStateReceived;
+    public event Action<byte, string, float>? ParameterReceived;
+    public event Action<byte, GpsState>? GpsStateReceived;
 
     // ═══════════════════════════════════════════════════════════════
     // Events - Connection State
@@ -95,6 +99,45 @@ public sealed class MavlinkBackend : IMavlinkBackend
     public byte ComponentId => _connection.ComponentId;
 
     // ═══════════════════════════════════════════════════════════════
+    // Multi-vehicle (swarm) discovery
+    // ═══════════════════════════════════════════════════════════════
+
+    /// <summary>System ids currently heartbeating on this link.</summary>
+    public IReadOnlyList<byte> KnownSystems => _vehicles.KnownSystems;
+
+    public event Action<byte>? VehicleDiscovered
+    {
+        add => _vehicles.VehicleDiscovered += value;
+        remove => _vehicles.VehicleDiscovered -= value;
+    }
+
+    public event Action<byte>? VehicleLost
+    {
+        add => _vehicles.VehicleLost += value;
+        remove => _vehicles.VehicleLost -= value;
+    }
+
+    /// <summary>Choose which vehicle un-targeted (single-vehicle) operations act on.</summary>
+    public void SetPrimaryVehicle(byte systemId)
+    {
+        byte comp = _vehicles.ComponentIdOf(systemId);
+        _connection.SetPrimary(systemId, comp == 0 ? (byte)1 : comp);
+    }
+
+    /// <summary>
+    /// Resolve a command's destination. 0 means "the primary vehicle"; anything
+    /// else addresses that system explicitly (component falls back to 1 = autopilot).
+    /// </summary>
+    private (byte Sys, byte Comp) ResolveTarget(byte targetSystem)
+    {
+        if (targetSystem == 0)
+            return (_connection.SystemId, _connection.ComponentId);
+
+        byte comp = _vehicles.ComponentIdOf(targetSystem);
+        return (targetSystem, comp == 0 ? (byte)1 : comp);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     // Constructor
     // ═══════════════════════════════════════════════════════════════
 
@@ -107,6 +150,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
 
         _connection = new MavlinkConnectionTracker(TimeSpan.FromSeconds(3));
         _connection.ConnectionChanged += OnConnectionChanged;
+        _vehicles = new MavlinkVehicleTracker(TimeSpan.FromSeconds(5));
 
         _commandAckTracker = new CommandAckTracker();
 
@@ -118,17 +162,23 @@ public sealed class MavlinkBackend : IMavlinkBackend
         return new IMavlinkMessageHandler[]
         {
             // Telemetry handlers
-            new HeartbeatHandler(_connection, s => HeartbeatReceived?.Invoke(s)),
-            new AttitudeHandler(s => AttitudeReceived?.Invoke(s)),
-            new GlobalPositionHandler(s => PositionReceived?.Invoke(s)),
-            new VfrHudHandler(s => VfrHudReceived?.Invoke(s)),
-            new SysStatusHandler(s => BatteryReceived?.Invoke(s)),
+            new HeartbeatHandler(_connection, s =>
+            {
+                // On a shared link every drone heartbeats here — this is what
+                // turns one stream into a known set of vehicles.
+                _vehicles.OnHeartbeat(s.SystemId, s.ComponentId, DateTime.UtcNow);
+                HeartbeatReceived?.Invoke(s);
+            }),
+            new AttitudeHandler((sys, s) => AttitudeReceived?.Invoke(sys, s)),
+            new GlobalPositionHandler((sys, s) => PositionReceived?.Invoke(sys, s)),
+            new VfrHudHandler((sys, s) => VfrHudReceived?.Invoke(sys, s)),
+            new SysStatusHandler((sys, s) => BatteryReceived?.Invoke(sys, s)),
             new RcChannelsHandler(s => RcChannelsReceived?.Invoke(s)),
             new ServoOutputHandler(s => ServoOutputReceived?.Invoke(s)),
             new MagCalProgressHandler(s => MagCalProgressReceived?.Invoke(s)),
             new MagCalReportHandler(s => MagCalReportReceived?.Invoke(s)),
             new MissionRequestHandler(seq => MissionRequestReceived?.Invoke(seq)),
-            new GpsRawIntHandler(s => GpsStateReceived?.Invoke(s)),
+            new GpsRawIntHandler((sys, s) => GpsStateReceived?.Invoke(sys, s)),
             // Message handlers
             new StatustextHandler(s => AutopilotMessageReceived?.Invoke(s)),
             
@@ -142,7 +192,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
             new MissionAckHandler(result => MissionAckReceived?.Invoke(result)),
             
             // Parameter handler
-            new ParamValueHandler((id, val) => ParameterReceived?.Invoke(id, val)),
+            new ParamValueHandler((sys, id, val) => ParameterReceived?.Invoke(sys, id, val)),
         };
     }
 
@@ -248,6 +298,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
             {
                 var now = DateTime.UtcNow;
                 _connection.Tick(now);
+                _vehicles.Tick(now);
                 _commandAckTracker.Tick();
                 await Task.Delay(200, token);
             }
@@ -264,13 +315,15 @@ public sealed class MavlinkBackend : IMavlinkBackend
         float param1 = 0, float param2 = 0, float param3 = 0, float param4 = 0,
         float param5 = 0, float param6 = 0, float param7 = 0,
         byte confirmation = 0,
+        byte targetSystem = 0,
         CancellationToken ct = default)
     {
         EnsureConnected();
+        var (sys, comp) = ResolveTarget(targetSystem);
 
         var packet = Mavlink2Serializer.CommandLong(
-            targetSys: _connection.SystemId,
-            targetComp: _connection.ComponentId,
+            targetSys: sys,
+            targetComp: comp,
             senderSys: GcsSysId,
             senderComp: GcsCompId,
             command: command,
@@ -284,12 +337,14 @@ public sealed class MavlinkBackend : IMavlinkBackend
     public async Task SendSetModeAsync(
         byte baseMode,
         uint customMode,
+        byte targetSystem = 0,
         CancellationToken ct = default)
     {
         EnsureConnected();
+        var (sys, _) = ResolveTarget(targetSystem);
 
         var packet = Mavlink2Serializer.SetMode(
-            targetSys: _connection.SystemId,
+            targetSys: sys,
             senderSys: GcsSysId,
             senderComp: GcsCompId,
             baseMode: baseMode,
@@ -298,18 +353,21 @@ public sealed class MavlinkBackend : IMavlinkBackend
         await SendPacketAsync(packet, ct);
     }
 
-    public async Task SendArmDisarmAsync(bool arm, CancellationToken ct = default)
+    public async Task SendArmDisarmAsync(bool arm, byte targetSystem = 0, CancellationToken ct = default)
     {
         await SendCommandLongAsync(
             command: MAV_CMD_COMPONENT_ARM_DISARM,
             param1: arm ? 1f : 0f,
+            targetSystem: targetSystem,
             ct: ct);
     }
 
     public async Task SendGuidedGotoAsync(
-        double latitudeDeg, double longitudeDeg, float altitudeMeters, CancellationToken ct = default)
+        double latitudeDeg, double longitudeDeg, float altitudeMeters,
+        byte targetSystem = 0, CancellationToken ct = default)
     {
         EnsureConnected();
+        var (sys, comp) = ResolveTarget(targetSystem);
 
         // COMMAND_INT (75) / MAV_CMD_DO_REPOSITION (192). param2 bit0 = change to
         // GUIDED. Lat/Lon carried as int32 (1e7) so precision isn't lost.
@@ -319,8 +377,8 @@ public sealed class MavlinkBackend : IMavlinkBackend
             compId: GcsCompId,
             fieldValues: new()
             {
-                ["target_system"] = _connection.SystemId,
-                ["target_component"] = _connection.ComponentId,
+                ["target_system"] = sys,
+                ["target_component"] = comp,
                 ["frame"] = (byte)6,       // MAV_FRAME_GLOBAL_RELATIVE_ALT_INT
                 ["command"] = (ushort)192, // MAV_CMD_DO_REPOSITION
                 ["current"] = (byte)0,
@@ -347,13 +405,14 @@ public sealed class MavlinkBackend : IMavlinkBackend
     // TX - Parameters (now using Mavlink2Serializer)
     // ═══════════════════════════════════════════════════════════════
 
-    public async Task SetParameterAsync(string paramId, float value, CancellationToken ct = default)
+    public async Task SetParameterAsync(string paramId, float value, byte targetSystem = 0, CancellationToken ct = default)
     {
         EnsureConnected();
+        var (sys, comp) = ResolveTarget(targetSystem);
 
         var packet = Mavlink2Serializer.ParamSet(
-            targetSys: _connection.SystemId,
-            targetComp: _connection.ComponentId,
+            targetSys: sys,
+            targetComp: comp,
             senderSys: GcsSysId,
             senderComp: GcsCompId,
             paramId: paramId,
@@ -364,13 +423,14 @@ public sealed class MavlinkBackend : IMavlinkBackend
         Debug.WriteLine($"[MavlinkBackend] SetParameter: {paramId} = {value}");
     }
 
-    public async Task RequestParameterAsync(string paramId, CancellationToken ct = default)
+    public async Task RequestParameterAsync(string paramId, byte targetSystem = 0, CancellationToken ct = default)
     {
         EnsureConnected();
+        var (sys, comp) = ResolveTarget(targetSystem);
 
         var packet = Mavlink2Serializer.ParamRequestRead(
-            targetSys: _connection.SystemId,
-            targetComp: _connection.ComponentId,
+            targetSys: sys,
+            targetComp: comp,
             senderSys: GcsSysId,
             senderComp: GcsCompId,
             paramId: paramId);

@@ -1,14 +1,22 @@
-﻿using System;
+using System;
 
 namespace GCS.Core.Mavlink.Connection;
 
+/// <summary>
+/// Tracks link liveness and which vehicle is the "primary" (the one single-vehicle
+/// screens act on). On a shared telemetry network several system ids heartbeat on
+/// the same link: any heartbeat keeps the link alive, but the reported system id
+/// only changes when the primary is explicitly switched — otherwise the connection
+/// state would flip between drones several times a second.
+/// </summary>
 public sealed class MavlinkConnectionTracker
 {
     private readonly TimeSpan _timeout;
 
     private byte? _systemId;
     private byte? _componentId;
-    private DateTime _lastHeartbeat;
+    private DateTime _lastHeartbeat;        // any vehicle on the link
+    private DateTime _lastPrimaryHeartbeat; // the primary specifically
 
     public bool IsConnected { get; private set; }
 
@@ -22,29 +30,53 @@ public sealed class MavlinkConnectionTracker
         _timeout = timeout;
     }
 
-    public void OnHeartbeat(byte systemId, byte componentId, DateTime timestampUtc)
+    /// <summary>
+    /// Choose which vehicle single-vehicle operations target. Ignored when the
+    /// id is 0 (unset).
+    /// </summary>
+    public void SetPrimary(byte systemId, byte componentId)
     {
-        // Check for changes BEFORE updating state
-        bool isFirst = _systemId == null;
-        bool vehicleChanged = !isFirst && (_systemId != systemId || _componentId != componentId);
+        if (systemId == 0) return;
+        if (_systemId == systemId && _componentId == componentId) return;
 
-        // Now update state
         _systemId = systemId;
         _componentId = componentId;
+        _lastPrimaryHeartbeat = _lastHeartbeat;
+        if (IsConnected) Raise();
+    }
+
+    public void OnHeartbeat(byte systemId, byte componentId, DateTime timestampUtc)
+    {
+        // Any vehicle's heartbeat proves the link is alive.
         _lastHeartbeat = timestampUtc;
+
+        bool isPrimary = _systemId == systemId;
+        if (isPrimary)
+            _lastPrimaryHeartbeat = timestampUtc;
+
+        // Adopt a new primary only when there isn't one, or when the current
+        // primary has gone quiet (vehicle swapped on the same link). A different
+        // drone heartbeating while the primary is alive must NOT steal it —
+        // on a shared swarm link that would flip the target several times a second.
+        bool adopted = false;
+        if (_systemId == null ||
+            (!isPrimary && timestampUtc - _lastPrimaryHeartbeat > _timeout))
+        {
+            _systemId = systemId;
+            _componentId = componentId;
+            _lastPrimaryHeartbeat = timestampUtc;
+            adopted = true;
+        }
 
         if (!IsConnected)
         {
-            // First connection
             IsConnected = true;
             Raise();
         }
-        else if (vehicleChanged)
+        else if (adopted)
         {
-            // Different vehicle connected mid-session
             Raise();
         }
-        // else: same vehicle, already connected - no event needed
     }
 
     public void Tick(DateTime nowUtc)

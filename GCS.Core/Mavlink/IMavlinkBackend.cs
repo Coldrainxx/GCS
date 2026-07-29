@@ -11,15 +11,17 @@ public interface IMavlinkBackend : IDisposable
     // ═══════════════════════════════════════════════════════════════
 
     event Action<HeartbeatState>? HeartbeatReceived;
-    event Action<AttitudeState>? AttitudeReceived;
-    event Action<PositionState>? PositionReceived;
-    event Action<VfrHudState>? VfrHudReceived;
-    event Action<BatteryState>? BatteryReceived;
+    // Telemetry events carry the source system id (first argument) so a shared
+    // swarm link can be demultiplexed into per-vehicle state.
+    event Action<byte, AttitudeState>? AttitudeReceived;
+    event Action<byte, PositionState>? PositionReceived;
+    event Action<byte, VfrHudState>? VfrHudReceived;
+    event Action<byte, BatteryState>? BatteryReceived;
     event Action<RcChannelsData>? RcChannelsReceived;
     event Action<ServoOutputData>? ServoOutputReceived;
     event Action<MagCalProgressData>? MagCalProgressReceived;
     event Action<MagCalReportData>? MagCalReportReceived;
-    event Action<GpsState>? GpsStateReceived;  // ← ADD THIS
+    event Action<byte, GpsState>? GpsStateReceived;
 
     /// <summary>Raw complete MAVLink packets, for telemetry logging (RX / TX).</summary>
     event Action<ReadOnlyMemory<byte>>? RawFrameReceived;
@@ -44,7 +46,7 @@ public interface IMavlinkBackend : IDisposable
     // RX Events - Parameters
     // ═══════════════════════════════════════════════════════════════
 
-    event Action<string, float>? ParameterReceived;  // paramId, value
+    event Action<byte, string, float>? ParameterReceived;  // systemId, paramId, value
 
     // ═══════════════════════════════════════════════════════════════
     // Connection State Events
@@ -62,6 +64,19 @@ public interface IMavlinkBackend : IDisposable
     byte ComponentId { get; }
 
     // ═══════════════════════════════════════════════════════════════
+    // Multi-vehicle (swarm) discovery
+    // ═══════════════════════════════════════════════════════════════
+
+    /// <summary>System ids currently heartbeating on this link.</summary>
+    IReadOnlyList<byte> KnownSystems { get; }
+
+    event Action<byte>? VehicleDiscovered;
+    event Action<byte>? VehicleLost;
+
+    /// <summary>Choose which vehicle un-targeted operations act on.</summary>
+    void SetPrimaryVehicle(byte systemId);
+
+    // ═══════════════════════════════════════════════════════════════
     // Lifecycle
     // ═══════════════════════════════════════════════════════════════
 
@@ -77,6 +92,7 @@ public interface IMavlinkBackend : IDisposable
         float param1 = 0, float param2 = 0, float param3 = 0, float param4 = 0,
         float param5 = 0, float param6 = 0, float param7 = 0,
         byte confirmation = 0,
+        byte targetSystem = 0,
         CancellationToken ct = default);
     Task<CommandAckResult> SendCommandWithAckAsync(
         ushort command,
@@ -86,10 +102,12 @@ public interface IMavlinkBackend : IDisposable
     Task SendSetModeAsync(
         byte baseMode,
         uint customMode,
+        byte targetSystem = 0,
         CancellationToken ct = default);
 
     Task SendArmDisarmAsync(
         bool arm,
+        byte targetSystem = 0,
         CancellationToken ct = default);
 
     /// <summary>
@@ -100,14 +118,15 @@ public interface IMavlinkBackend : IDisposable
         double latitudeDeg,
         double longitudeDeg,
         float altitudeMeters,
+        byte targetSystem = 0,
         CancellationToken ct = default);
 
     // ═══════════════════════════════════════════════════════════════
     // TX Methods - Parameters
     // ═══════════════════════════════════════════════════════════════
 
-    Task SetParameterAsync(string paramId, float value, CancellationToken ct = default);
-    Task RequestParameterAsync(string paramId, CancellationToken ct = default);
+    Task SetParameterAsync(string paramId, float value, byte targetSystem = 0, CancellationToken ct = default);
+    Task RequestParameterAsync(string paramId, byte targetSystem = 0, CancellationToken ct = default);
 
     // ═══════════════════════════════════════════════════════════════
     // TX Methods - Raw Packet

@@ -9,9 +9,9 @@ public sealed class SysStatusHandler : IMavlinkMessageHandler
 {
     public uint MessageId => 1; // SYS_STATUS
 
-    private readonly Action<BatteryState> _onBattery;
+    private readonly Action<byte, BatteryState> _onBattery;
 
-    public SysStatusHandler(Action<BatteryState> onBattery)
+    public SysStatusHandler(Action<byte, BatteryState> onBattery)
     {
         _onBattery = onBattery;
     }
@@ -30,7 +30,7 @@ public sealed class SysStatusHandler : IMavlinkMessageHandler
         float voltage = voltageMv / 1000f;
         float current = currentRaw >= 0 ? currentRaw / 100f : 0f;
 
-        _onBattery(
+        _onBattery(frame.SystemId,
             new BatteryState(
                 VoltageVolts: voltage,
                 CurrentAmps: current,

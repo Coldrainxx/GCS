@@ -107,13 +107,32 @@
                                         Pitch="{Binding Pitch}"/>
 
                 <!-- Overlay Label -->
-                <TextBlock Text="ATTITUDE" 
-                          HorizontalAlignment="Left" 
+                <TextBlock Text="ATTITUDE"
+                          HorizontalAlignment="Left"
                           VerticalAlignment="Top"
                           Margin="15,15"
                           Style="{StaticResource MetricLabelStyle}"
                           Foreground="{StaticResource PrimaryText}"
                           FontSize="11"/>
+
+                <!-- Which vehicle every tab below is showing. Only meaningful once
+                     there is more than one, so it appears in swarm mode. -->
+                <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="15,12"
+                        Background="#CC0D1117" BorderBrush="{StaticResource AccentCyan}"
+                        BorderThickness="1" CornerRadius="3" Padding="8,3"
+                        Visibility="{Binding DataContext.IsSwarmMode,
+                                     RelativeSource={RelativeSource AncestorType=Window},
+                                     Converter={StaticResource BoolToVisibilityConverter}}">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="SHOWING" Foreground="{StaticResource SecondaryText}"
+                                   FontSize="9" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding DataContext.Swarm.ActiveVehicle.Name,
+                                          RelativeSource={RelativeSource AncestorType=Window},
+                                          FallbackValue=—, TargetNullValue=—}"
+                                   Foreground="{StaticResource AccentCyan}" FontSize="12"
+                                   FontWeight="Bold" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                    </StackPanel>
+                </Border>
 
                 <!-- Angle Readout -->
                 <Border Background="#1C2128" 
@@ -161,8 +180,19 @@
                     Margin="10,5,10,10"
                     PreviewMouseWheel="Tabs_PreviewMouseWheel">
 
-            <!-- TAB 1: DATA -->
-            <TabItem Header="DATA" Style="{StaticResource ModernTabItem}">
+            <!-- TAB 0: SWARM — only present in swarm mode, so the fleet roster,
+                 formation and group commands sit alongside MISSION/DATA/etc.
+                 and you never have to leave swarm mode to plan or inspect. -->
+            <TabItem x:Name="SwarmTab" Header="SWARM" Style="{StaticResource ModernTabItem}"
+                     Visibility="{Binding DataContext.IsSwarmMode,
+                                  RelativeSource={RelativeSource AncestorType=Window},
+                                  Converter={StaticResource BoolToVisibilityConverter}}">
+                <views:SwarmView DataContext="{Binding DataContext.Swarm,
+                                               RelativeSource={RelativeSource AncestorType=Window}}"/>
+            </TabItem>
+
+            <!-- TAB 1: DATA (the default tab — see FlightPanelView.OnLoaded) -->
+            <TabItem x:Name="DataTab" Header="DATA" Style="{StaticResource ModernTabItem}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <views:DataTabView DataContext="{Binding}"/>
                 </ScrollViewer>
@@ -189,8 +219,13 @@
                 </ScrollViewer>
             </TabItem>
 
-            <!-- TAB 5: ACTIONS -->
-            <TabItem Header="ACTIONS" Style="{StaticResource ModernTabItem}">
+            <!-- TAB 5: ACTIONS — single-vehicle only. In swarm mode the action bar
+                 drives the whole fleet, so per-vehicle arm/mode buttons here would
+                 be an ambiguous second place to command one drone. -->
+            <TabItem x:Name="ActionsTab" Header="ACTIONS" Style="{StaticResource ModernTabItem}"
+                     Visibility="{Binding DataContext.IsSingleVehicleMode,
+                                  RelativeSource={RelativeSource AncestorType=Window},
+                                  Converter={StaticResource BoolToVisibilityConverter}}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <views:ActionsTabView DataContext="{Binding DataContext.Actions, RelativeSource={RelativeSource AncestorType=Window}}"/>
                 </ScrollViewer>

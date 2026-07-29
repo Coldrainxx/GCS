@@ -35,16 +35,21 @@ internal sealed class FakeBackend : IMavlinkBackend
     public byte SystemId { get; }
     public byte ComponentId { get; }
 
+    public IReadOnlyList<byte> KnownSystems => new[] { SystemId };
+    public event Action<byte>? VehicleDiscovered;
+    public event Action<byte>? VehicleLost;
+    public void SetPrimaryVehicle(byte systemId) { }
+
     public event Action<HeartbeatState>? HeartbeatReceived;
-    public event Action<AttitudeState>? AttitudeReceived;
-    public event Action<PositionState>? PositionReceived;
-    public event Action<VfrHudState>? VfrHudReceived;
-    public event Action<BatteryState>? BatteryReceived;
+    public event Action<byte, AttitudeState>? AttitudeReceived;
+    public event Action<byte, PositionState>? PositionReceived;
+    public event Action<byte, VfrHudState>? VfrHudReceived;
+    public event Action<byte, BatteryState>? BatteryReceived;
     public event Action<RcChannelsData>? RcChannelsReceived;
     public event Action<ServoOutputData>? ServoOutputReceived;
     public event Action<MagCalProgressData>? MagCalProgressReceived;
     public event Action<MagCalReportData>? MagCalReportReceived;
-    public event Action<GpsState>? GpsStateReceived;
+    public event Action<byte, GpsState>? GpsStateReceived;
     public event Action<ReadOnlyMemory<byte>>? RawFrameReceived;
     public event Action<ReadOnlyMemory<byte>>? RawFrameSent;
     public event Action<AutopilotMessage>? AutopilotMessageReceived;
@@ -52,18 +57,25 @@ internal sealed class FakeBackend : IMavlinkBackend
     public event Action<MissionItem>? MissionItemReceived;
     public event Action<ushort>? MissionRequestReceived;
     public event Action<byte>? MissionAckReceived;
-    public event Action<string, float>? ParameterReceived;
+    public event Action<byte, string, float>? ParameterReceived;
     public event Action<ConnectionState>? ConnectionStateChanged;
     public event Action<TransportState>? TransportStateChanged;
 
     public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     public Task StopAsync() => Task.CompletedTask;
 
+    // ── Test helpers: pretend a vehicle sent telemetry ──────────────
+    public void RaiseAttitude(byte sysId, AttitudeState s) => AttitudeReceived?.Invoke(sysId, s);
+    public void RaisePosition(byte sysId, PositionState s) => PositionReceived?.Invoke(sysId, s);
+    public void RaiseBattery(byte sysId, BatteryState s) => BatteryReceived?.Invoke(sysId, s);
+    public void RaiseHeartbeat(HeartbeatState s) => HeartbeatReceived?.Invoke(s);
+
     public Task SendCommandLongAsync(
         ushort command,
         float param1 = 0, float param2 = 0, float param3 = 0, float param4 = 0,
         float param5 = 0, float param6 = 0, float param7 = 0,
         byte confirmation = 0,
+        byte targetSystem = 0,
         CancellationToken ct = default) => Task.CompletedTask;
 
     public Task<CommandAckResult> SendCommandWithAckAsync(
@@ -72,18 +84,19 @@ internal sealed class FakeBackend : IMavlinkBackend
         float param5 = 0, float param6 = 0, float param7 = 0,
         CancellationToken ct = default) => Task.FromResult(CommandAckResult.Accepted);
 
-    public Task SendSetModeAsync(byte baseMode, uint customMode, CancellationToken ct = default)
+    public Task SendSetModeAsync(byte baseMode, uint customMode, byte targetSystem = 0, CancellationToken ct = default)
         => Task.CompletedTask;
 
-    public Task SendArmDisarmAsync(bool arm, CancellationToken ct = default) => Task.CompletedTask;
+    public Task SendArmDisarmAsync(bool arm, byte targetSystem = 0, CancellationToken ct = default) => Task.CompletedTask;
 
-    public Task SendGuidedGotoAsync(double latitudeDeg, double longitudeDeg, float altitudeMeters, CancellationToken ct = default)
+    public Task SendGuidedGotoAsync(double latitudeDeg, double longitudeDeg, float altitudeMeters,
+        byte targetSystem = 0, CancellationToken ct = default)
         => Task.CompletedTask;
 
-    public Task SetParameterAsync(string paramId, float value, CancellationToken ct = default)
+    public Task SetParameterAsync(string paramId, float value, byte targetSystem = 0, CancellationToken ct = default)
         => Task.CompletedTask;
 
-    public Task RequestParameterAsync(string paramId, CancellationToken ct = default)
+    public Task RequestParameterAsync(string paramId, byte targetSystem = 0, CancellationToken ct = default)
         => Task.CompletedTask;
 
     public Task SendRawAsync(ReadOnlyMemory<byte> packet, CancellationToken ct = default)

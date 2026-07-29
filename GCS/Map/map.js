@@ -29,6 +29,51 @@
     var modelReady = false;
     var uav = { lng: cfg.centerLon, lat: cfg.centerLat, heading: 0, alt: 0, roll: 0, pitch: 0 };
 
+    // ── Swarm ───────────────────────────────────────────────────────
+    // One entry per vehicle: { id, lat, lng, alt, heading, roll, pitch,
+    //                          leader, active, marker, el, mesh }
+    var SWARM_MODEL_URL = "models/swarmdrone.stl";
+    var swarm = {};                 // sysid -> vehicle
+    var swarmGeometry = null;       // ONE shared BufferGeometry for every drone
+    var swarmModelRadius = 1;
+    var LEADER_COLOR = 0xFFB000, FOLLOWER_COLOR = 0x39D0D8;
+    var LEADER_CSS = "#FFB000", FOLLOWER_CSS = "#39D0D8", ACTIVE_CSS = "#FFFFFF";
+
+    // Followers used to share one colour, which made them impossible to tell
+    // apart. Each vehicle gets a stable colour from this palette instead, used
+    // for its marker, its 3D model and its trail, so all three agree.
+    var VEHICLE_PALETTE = [
+        "#39D0D8", "#3FB950", "#A371F7", "#F778BA",
+        "#58A6FF", "#E3B341", "#FF7B72", "#7EE787"
+    ];
+
+    function colorCssFor(id, isLeader) {
+        if (isLeader) return LEADER_CSS;
+        return VEHICLE_PALETTE[Math.abs(id) % VEHICLE_PALETTE.length];
+    }
+
+    function colorHexFor(id, isLeader) {
+        return parseInt(colorCssFor(id, isLeader).slice(1), 16);
+    }
+
+    // Per-vehicle position history: sysid -> [[lon,lat], ...]
+    var swarmTrails = {};
+    var MAX_SWARM_TRAIL_POINTS = 300;
+
+    // Swarm mode is an app mode, not "more than one vehicle": in single-UAV mode
+    // the map shows only the active drone, exactly like before the swarm work.
+    var swarmMode = false;
+
+    function swarmCount() { return Object.keys(swarm).length; }
+
+    // Single source of truth for the legacy single-UAV arrow. Mode picks the
+    // representation (single vs swarm), is3D picks flat arrow vs STL model.
+    // Several callers update this at different rates, so letting each decide
+    // for itself made it flicker.
+    function refreshUavArrowVisibility() {
+        if (uavEl) uavEl.style.display = (is3D || swarmMode) ? "none" : "";
+    }
+
     // ── Basemap style ───────────────────────────────────────────────
     // Note the Esri tile URL order is {z}/{y}/{x}, not {z}/{x}/{y}.
     function buildStyle() {
@@ -85,7 +130,145 @@
             layout: { "line-cap": "round", "line-join": "round" },
             paint: { "line-color": "#FF9500", "line-width": 2, "line-opacity": 0.6 } });
 
+        // One source holding a line per vehicle, coloured from each feature's own
+        // property — so N trails cost one source and one layer.
+        map.addSource("swarm-trails", { type: "geojson", data: empty() });
+        map.addLayer({ id: "swarm-trails", type: "line", source: "swarm-trails",
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": ["get", "color"], "line-width": 2, "line-opacity": 0.55 } });
+
+        // Formation preview: the shape from the leader out to each station, plus
+        // how far each drone currently is from where it should be.
+        map.addSource("formation", { type: "geojson", data: empty() });
+        map.addLayer({ id: "formation-arms", type: "line", source: "formation",
+            filter: ["==", ["get", "kind"], "arm"],
+            layout: { "line-cap": "round" },
+            paint: { "line-color": "#FFB000", "line-width": 1.5,
+                     "line-dasharray": [2, 2], "line-opacity": 0.7 } });
+        map.addLayer({ id: "formation-error", type: "line", source: "formation",
+            filter: ["==", ["get", "kind"], "error"],
+            paint: { "line-color": ["get", "color"], "line-width": 1.5, "line-opacity": 0.9 } });
+        map.addLayer({ id: "formation-stations", type: "circle", source: "formation",
+            filter: ["==", ["get", "kind"], "station"],
+            paint: { "circle-radius": 5, "circle-color": "rgba(0,0,0,0)",
+                     "circle-stroke-color": ["get", "color"], "circle-stroke-width": 2,
+                     "circle-opacity": 0.9 } });
+
         addUavModelLayer();
+        addSwarmModelLayer();
+    }
+
+    // Every drone in the swarm, drawn from ONE shared geometry: the STL is large,
+    // so it is loaded once and reused by every mesh rather than per vehicle.
+    function addSwarmModelLayer() {
+        var layer = {
+            id: "swarm-3d",
+            type: "custom",
+            renderingMode: "3d",
+            onAdd: function (m, gl) {
+                this.camera = new THREE.Camera();
+                this.scene = new THREE.Scene();
+                this.scene.add(new THREE.AmbientLight(0xffffff, 0.8));
+                var d1 = new THREE.DirectionalLight(0xffffff, 0.9); d1.position.set(0, -70, 100).normalize(); this.scene.add(d1);
+                var d2 = new THREE.DirectionalLight(0xffffff, 0.5); d2.position.set(0, 70, 100).normalize(); this.scene.add(d2);
+
+                var self = this;
+                new THREE.STLLoader().load(SWARM_MODEL_URL, function (geometry) {
+                    geometry.computeVertexNormals();
+                    geometry.center();
+                    geometry.computeBoundingBox();
+                    var size = new THREE.Vector3();
+                    geometry.boundingBox.getSize(size);
+                    swarmModelRadius = Math.max(size.x, size.y, size.z) || 1;
+                    swarmGeometry = geometry;
+
+                    // ONE mesh, drawn once per vehicle. The model matrix must be
+                    // folded into the projection matrix on the CPU (float64): the
+                    // mercator scale is ~1e-8, so letting the GPU combine it with
+                    // the map matrix in float32 destroys precision and shatters
+                    // the mesh.
+                    // One material per colour, created on demand and reused.
+                    self.materials = {};
+                    self.materialFor = function (id, isLeader) {
+                        var hex = colorHexFor(id, isLeader);
+                        return self.materials[hex] ||
+                              (self.materials[hex] = new THREE.MeshPhongMaterial({ color: hex, shininess: 30 }));
+                    };
+                    self.mesh = new THREE.Mesh(geometry, self.materialFor(0, false));
+                    self.scene.add(self.mesh);
+
+                    if (is3D && map) map.triggerRepaint();
+                }, undefined, function (err) { console.error("[map] swarm STL load failed:", err); });
+
+                this.renderer = new THREE.WebGLRenderer({ canvas: m.getCanvas(), context: gl, antialias: true });
+                this.renderer.autoClear = false;
+            },
+            render: function (gl, matrix) {
+                if (!swarmMode) return;   // single-UAV mode draws the legacy model instead
+                if (!swarmGeometry || !this.mesh || !is3D || swarmCount() === 0) return;
+
+                var d2r = Math.PI / 180;
+                var self = this;
+                this.renderer.resetState();
+
+                // One draw per vehicle. Each drone's model matrix is multiplied
+                // into the map matrix here in JS (double precision) and handed to
+                // the camera — the same path the single-UAV layer uses. Baking it
+                // into the mesh instead would push that multiply onto the GPU in
+                // float32 and tear the geometry apart at mercator scale.
+                Object.keys(swarm).forEach(function (id) {
+                    var v = swarm[id];
+                    var merc = maplibregl.MercatorCoordinate.fromLngLat([v.lng, v.lat], v.alt);
+                    var s = (MODEL_SIZE_M / swarmModelRadius) * merc.meterInMercatorCoordinateUnits();
+                    if (v.leader) s *= 1.35;   // leader reads bigger
+
+                    var l = new THREE.Matrix4()
+                        .makeTranslation(merc.x, merc.y, merc.z)
+                        .multiply(new THREE.Matrix4().makeScale(s, -s, s))
+                        .multiply(new THREE.Matrix4().makeRotationZ(-(v.heading + HEADING_OFFSET) * d2r))
+                        .multiply(new THREE.Matrix4().makeRotationX(v.roll * ROLL_SIGN * d2r))
+                        .multiply(new THREE.Matrix4().makeRotationY(v.pitch * PITCH_SIGN * d2r))
+                        .multiply(new THREE.Matrix4().makeRotationX(MODEL_BASE_TILT));
+
+                    self.mesh.material = self.materialFor(v.id, v.leader);
+                    self.camera.projectionMatrix = new THREE.Matrix4().fromArray(matrix).multiply(l);
+                    self.renderer.render(self.scene, self.camera);
+                });
+            }
+        };
+        map.addLayer(layer);
+    }
+
+    // Flat marker used in 2D: a coloured chevron plus the vehicle label.
+    function createSwarmMarker(v) {
+        var el = document.createElement("div");
+        el.className = "swarm-icon";
+        el.style.cssText = "display:flex;flex-direction:column;align-items:center;pointer-events:none;";
+        el.innerHTML =
+            '<div class="swarm-arrow" style="width:0;height:0;border-left:9px solid transparent;' +
+            'border-right:9px solid transparent;border-bottom:22px solid ' + FOLLOWER_CSS + ';' +
+            'filter:drop-shadow(0 2px 3px rgba(0,0,0,0.6));transform-origin:center center;"></div>' +
+            '<div class="swarm-label" style="margin-top:2px;font:bold 10px Consolas,monospace;' +
+            'color:#fff;background:rgba(10,14,20,0.75);border-radius:3px;padding:1px 4px;white-space:nowrap;"></div>';
+        v.el = el;
+        v.arrowEl = el.querySelector(".swarm-arrow");
+        v.labelEl = el.querySelector(".swarm-label");
+        v.marker = new maplibregl.Marker({ element: el, rotationAlignment: "viewport" })
+            .setLngLat([v.lng, v.lat]).addTo(map);
+    }
+
+    function styleSwarmMarker(v) {
+        if (!v.arrowEl) return;
+        var color = colorCssFor(v.id, v.leader);
+        v.arrowEl.style.borderBottomColor = color;
+        var h = v.leader ? 28 : 22, w = v.leader ? 11 : 9;
+        v.arrowEl.style.borderBottomWidth = h + "px";
+        v.arrowEl.style.borderLeftWidth = w + "px";
+        v.arrowEl.style.borderRightWidth = w + "px";
+        v.labelEl.textContent = (v.leader ? "★ " : "") + "UAV " + v.id +
+                                (v.alt ? "  " + v.alt.toFixed(0) + "m" : "");
+        v.labelEl.style.color = v.active ? ACTIVE_CSS : "#C9D1D9";
+        v.labelEl.style.outline = v.active ? "1px solid " + ACTIVE_CSS : "none";
     }
 
     // 3D UAV model rendered with Three.js inside a MapLibre custom layer.
@@ -122,7 +305,8 @@
                 this.renderer.autoClear = false;
             },
             render: function (gl, matrix) {
-                if (!modelReady || !is3D) return;
+                // In swarm mode the fleet layer draws every vehicle, this one included.
+                if (!modelReady || !is3D || swarmMode) return;
                 var merc = maplibregl.MercatorCoordinate.fromLngLat([uav.lng, uav.lat], uav.alt);
                 var scale = (MODEL_SIZE_M / this.modelRadius) * merc.meterInMercatorCoordinateUnits();
 
@@ -286,7 +470,7 @@
 
         uavMarker.setLngLat([lon, lat]);
         if (uavArrow) uavArrow.style.transform = "rotate(" + (heading + ARROW_HEADING_OFFSET) + "deg)";
-        if (uavEl) uavEl.style.display = is3D ? "none" : "";  // arrow hidden in 3D (model shown)
+        refreshUavArrowVisibility();
         if (is3D) map.triggerRepaint();
 
         trail.push([lon, lat]);
@@ -332,6 +516,152 @@
         if (ready) map.getSource("trail").setData(lineFeature([]));
     };
 
+    // ── Swarm (exposed to WPF) ──────────────────────────────────────
+    // list: [{ id, lat, lon, alt, hdg, roll, pitch, leader, active }]
+    // Vehicles missing from the list are removed, so this is the whole picture.
+    window.updateSwarm = function (list) {
+        if (!ready || !swarmMode) return;
+        try {
+            if (typeof list === "string") list = JSON.parse(list);
+        } catch (e) { console.error("[map] bad swarm payload:", e); return; }
+        if (!Array.isArray(list)) return;
+
+        var seen = {};
+        list.forEach(function (d) {
+            if (d == null || d.id == null) return;
+            if (d.lat === 0 && d.lon === 0) return;   // no fix yet — don't place it at null island
+            var id = String(d.id);
+            seen[id] = true;
+
+            var v = swarm[id];
+            if (!v) {
+                v = swarm[id] = { id: d.id, lat: d.lat, lng: d.lon, alt: 0,
+                                  heading: 0, roll: 0, pitch: 0, leader: false, active: false };
+                createSwarmMarker(v);
+            }
+
+            v.lat = d.lat; v.lng = d.lon;
+            v.alt = (d.alt || 0) * ALT_EXAGGERATION;
+            v.heading = d.hdg || 0;
+            v.roll = d.roll || 0;
+            v.pitch = d.pitch || 0;
+
+            v.leader = !!d.leader;
+            v.active = !!d.active;
+            v.stationLat = (typeof d.slat === "number") ? d.slat : null;
+            v.stationLon = (typeof d.slon === "number") ? d.slon : null;
+
+            v.marker.setLngLat([v.lng, v.lat]);
+            if (v.arrowEl)
+                v.arrowEl.style.transform = "rotate(" + (v.heading + ARROW_HEADING_OFFSET) + "deg)";
+            styleSwarmMarker(v);
+            if (v.el) v.el.style.display = is3D ? "none" : "";
+
+            // Each vehicle keeps its own history, so switching the active drone
+            // no longer makes one shared trail jump across the map.
+            var track = swarmTrails[id] || (swarmTrails[id] = []);
+            var last = track[track.length - 1];
+            if (!last || last[0] !== v.lng || last[1] !== v.lat) {
+                track.push([v.lng, v.lat]);
+                if (track.length > MAX_SWARM_TRAIL_POINTS) track.shift();
+            }
+        });
+
+        // Drop vehicles that are no longer reported.
+        Object.keys(swarm).forEach(function (id) {
+            if (seen[id]) return;
+            var v = swarm[id];
+            if (v.marker) v.marker.remove();
+            delete swarm[id];
+            delete swarmTrails[id];
+        });
+
+        refreshSwarmTrails();
+        refreshFormationPreview();
+
+        // With a swarm on screen the single-UAV arrow/model would double-draw.
+        refreshUavArrowVisibility();
+        if (is3D) map.triggerRepaint();
+    };
+
+    function refreshSwarmTrails() {
+        if (!ready || !map.getSource("swarm-trails")) return;
+        var features = [];
+        Object.keys(swarmTrails).forEach(function (id) {
+            var track = swarmTrails[id];
+            if (!track || track.length < 2) return;
+            var v = swarm[id];
+            features.push({
+                type: "Feature",
+                properties: { color: colorCssFor(v ? v.id : parseInt(id, 10), v && v.leader) },
+                geometry: { type: "LineString", coordinates: track }
+            });
+        });
+        map.getSource("swarm-trails").setData({ type: "FeatureCollection", features: features });
+    }
+
+    // Draws the intended formation: a dashed arm from the leader to every station,
+    // a ring at each station, and a solid line showing how far each drone is from
+    // the station it should be holding.
+    function refreshFormationPreview() {
+        if (!ready || !map.getSource("formation")) return;
+
+        var features = [];
+        var leader = null;
+        Object.keys(swarm).forEach(function (id) { if (swarm[id].leader) leader = swarm[id]; });
+
+        if (leader) {
+            Object.keys(swarm).forEach(function (id) {
+                var v = swarm[id];
+                if (v.leader || v.stationLat == null) return;
+                var color = colorCssFor(v.id, false);
+                var station = [v.stationLon, v.stationLat];
+
+                features.push({
+                    type: "Feature", properties: { kind: "arm" },
+                    geometry: { type: "LineString", coordinates: [[leader.lng, leader.lat], station] }
+                });
+                features.push({
+                    type: "Feature", properties: { kind: "station", color: color },
+                    geometry: { type: "Point", coordinates: station }
+                });
+                features.push({
+                    type: "Feature", properties: { kind: "error", color: color },
+                    geometry: { type: "LineString", coordinates: [[v.lng, v.lat], station] }
+                });
+            });
+        }
+
+        map.getSource("formation").setData({ type: "FeatureCollection", features: features });
+    }
+
+    window.clearSwarmTrails = function () {
+        swarmTrails = {};
+        refreshSwarmTrails();
+    };
+
+    // Swarm mode on: the map draws every vehicle. Off: it goes back to the single
+    // active UAV, exactly as the app behaved before swarm support.
+    window.setSwarmMode = function (on) {
+        swarmMode = !!on;
+        if (!swarmMode) window.clearSwarm();
+        refreshUavArrowVisibility();
+        if (ready && is3D) map.triggerRepaint();
+    };
+
+    window.clearSwarm = function () {
+        Object.keys(swarm).forEach(function (id) {
+            var v = swarm[id];
+            if (v.marker) v.marker.remove();
+            delete swarm[id];
+        });
+        swarmTrails = {};
+        refreshSwarmTrails();
+        refreshFormationPreview();
+        refreshUavArrowVisibility();
+        if (ready && is3D) map.triggerRepaint();
+    };
+
     // ── Buttons ─────────────────────────────────────────────────────
     function updateFollowBtn() {
         var b = document.getElementById("followBtn");
@@ -347,7 +677,12 @@
 
     window.setView3D = function (on) {
         is3D = !!on;
-        if (uavEl) uavEl.style.display = is3D ? "none" : "";  // arrow in 2D, STL model in 3D
+        // Flat arrows in 2D, STL models in 3D — for the single UAV and the swarm.
+        refreshUavArrowVisibility();
+        Object.keys(swarm).forEach(function (id) {
+            var v = swarm[id];
+            if (v.el) v.el.style.display = is3D ? "none" : "";
+        });
         map.easeTo({ pitch: is3D ? 60 : 0, duration: 400 });
         if (is3D) map.triggerRepaint();
         updateViewBtn();

@@ -9,9 +9,9 @@ public sealed class VfrHudHandler : IMavlinkMessageHandler
 {
     public uint MessageId => 74; // VFR_HUD
 
-    private readonly Action<VfrHudState> _onHud;
+    private readonly Action<byte, VfrHudState> _onHud;
 
-    public VfrHudHandler(Action<VfrHudState> onHud)
+    public VfrHudHandler(Action<byte, VfrHudState> onHud)
     {
         _onHud = onHud;
     }
@@ -27,7 +27,7 @@ public sealed class VfrHudHandler : IMavlinkMessageHandler
         float climb =
             Convert.ToSingle(frame.Fields["climb"]);
 
-        _onHud(
+        _onHud(frame.SystemId,
             new VfrHudState(
                 AirspeedMps: airspeed,
                 GroundspeedMps: groundspeed,

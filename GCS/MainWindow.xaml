@@ -135,6 +135,44 @@
                                       Foreground="{StaticResource PrimaryText}"/>
                         </Button>
 
+                        <Button x:Name="SwarmButton"
+                                Margin="8,0,0,0"
+                                Click="SwarmButton_Click">
+                            <Button.Style>
+                                <!-- Lights up while swarm mode is engaged. -->
+                                <Style TargetType="Button" BasedOn="{StaticResource ModernButtonStyle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsSwarmMode}" Value="True">
+                                            <Setter Property="Background" Value="{StaticResource AccentCyan}"/>
+                                            <Setter Property="BorderBrush" Value="{StaticResource AccentCyan}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🛩 SWARM"
+                                          FontWeight="Bold"
+                                          FontSize="14">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Foreground" Value="{StaticResource PrimaryText}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsSwarmMode}" Value="True">
+                                                    <Setter Property="Foreground" Value="#0A0E14"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <Border Background="#0A0E14" CornerRadius="8"
+                                        Padding="6,1" Margin="8,0,0,0" VerticalAlignment="Center"
+                                        Visibility="{Binding Swarm.HasSwarm, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <TextBlock Text="{Binding Swarm.Count}" Foreground="{StaticResource AccentCyan}"
+                                              FontSize="11" FontWeight="Bold"/>
+                                </Border>
+                            </StackPanel>
+                        </Button>
+
                     </StackPanel>
 
                     <!-- Center: Vehicle Info - Fixed Alignment -->
@@ -380,30 +418,64 @@
                     BorderBrush="{StaticResource BorderBrush}"
                     BorderThickness="0,0,0,1"
                     Padding="10,6">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button Content="ARM" Style="{StaticResource ModernButtonStyle}"
-                            Background="{StaticResource AccentGreen}" Foreground="White"
-                            Command="{Binding Actions.ArmCommand}" Margin="0,0,6,0"/>
-                    <Button Content="DISARM" Style="{StaticResource ModernButtonStyle}"
-                            Background="{StaticResource AccentRed}" Foreground="White"
-                            Command="{Binding Actions.DisarmCommand}" Margin="0,0,16,0"/>
+                <Grid>
+                    <!-- SINGLE-VEHICLE: acts on the active vehicle -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                Visibility="{Binding IsSingleVehicleMode, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Button Content="ARM" Style="{StaticResource ModernButtonStyle}"
+                                Background="{StaticResource AccentGreen}" Foreground="White"
+                                Command="{Binding Actions.ArmCommand}" Margin="0,0,6,0"/>
+                        <Button Content="DISARM" Style="{StaticResource ModernButtonStyle}"
+                                Background="{StaticResource AccentRed}" Foreground="White"
+                                Command="{Binding Actions.DisarmCommand}" Margin="0,0,16,0"/>
 
-                    <TextBlock Text="MODE" Foreground="{StaticResource SecondaryText}" FontSize="11"
-                               FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                    <ComboBox Width="140" VerticalAlignment="Center"
-                              ItemsSource="{Binding Actions.AvailableModes}"
-                              SelectedIndex="{Binding Actions.SelectedModeIndex}"/>
-                    <Button Content="SET" Style="{StaticResource ModernButtonStyle}"
-                            Command="{Binding Actions.SetModeCommand}" Margin="6,0,16,0"/>
+                        <TextBlock Text="MODE" Foreground="{StaticResource SecondaryText}" FontSize="11"
+                                   FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <ComboBox Width="140" VerticalAlignment="Center"
+                                  ItemsSource="{Binding Actions.AvailableModes}"
+                                  SelectedIndex="{Binding Actions.SelectedModeIndex}"/>
+                        <Button Content="SET" Style="{StaticResource ModernButtonStyle}"
+                                Command="{Binding Actions.SetModeCommand}" Margin="6,0,16,0"/>
 
-                    <Button Content="RTL" Style="{StaticResource ModernButtonStyle}"
-                            Background="{StaticResource AccentOrange}" Foreground="White"
-                            Command="{Binding Actions.RtlCommand}" Margin="0,0,6,0"/>
-                    <Button Content="LOITER" Style="{StaticResource ModernButtonStyle}"
-                            Command="{Binding Actions.LoiterCommand}" Margin="0,0,6,0"/>
-                    <Button Content="QLAND" Style="{StaticResource ModernButtonStyle}"
-                            Command="{Binding Actions.QLandCommand}" Margin="0,0,6,0"/>
-                </StackPanel>
+                        <Button Content="RTL" Style="{StaticResource ModernButtonStyle}"
+                                Background="{StaticResource AccentOrange}" Foreground="White"
+                                Command="{Binding Actions.RtlCommand}" Margin="0,0,6,0"/>
+                        <Button Content="LOITER" Style="{StaticResource ModernButtonStyle}"
+                                Command="{Binding Actions.LoiterCommand}" Margin="0,0,6,0"/>
+                        <Button Content="QLAND" Style="{StaticResource ModernButtonStyle}"
+                                Command="{Binding Actions.QLandCommand}" Margin="0,0,6,0"/>
+                    </StackPanel>
+
+                    <!-- SWARM: every command acts on the whole fleet -->
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                Visibility="{Binding IsSwarmMode, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Border Background="#1A39D0D8" BorderBrush="{StaticResource AccentCyan}"
+                                BorderThickness="1" CornerRadius="3" Padding="8,3" Margin="0,0,14,0"
+                                VerticalAlignment="Center">
+                            <TextBlock Text="SWARM MODE — COMMANDS AFFECT ALL VEHICLES"
+                                       Foreground="{StaticResource AccentCyan}" FontSize="10" FontWeight="Bold"/>
+                        </Border>
+
+                        <Button Content="ARM ALL" Style="{StaticResource ModernButtonStyle}"
+                                Background="{StaticResource AccentGreen}" Foreground="White"
+                                Command="{Binding Swarm.ArmAllCommand}" Margin="0,0,6,0"/>
+                        <Button Content="DISARM ALL" Style="{StaticResource ModernButtonStyle}"
+                                Background="{StaticResource AccentRed}" Foreground="White"
+                                Command="{Binding Swarm.DisarmAllCommand}" Margin="0,0,16,0"/>
+
+                        <TextBlock Text="MODE" Foreground="{StaticResource SecondaryText}" FontSize="11"
+                                   FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <ComboBox Width="140" VerticalAlignment="Center"
+                                  ItemsSource="{Binding Swarm.AvailableModes}"
+                                  SelectedIndex="{Binding Swarm.SelectedModeIndex}"/>
+                        <Button Content="SET ALL" Style="{StaticResource ModernButtonStyle}"
+                                Command="{Binding Swarm.SetModeAllCommand}" Margin="6,0,16,0"/>
+
+                        <Button Content="RTL ALL" Style="{StaticResource ModernButtonStyle}"
+                                Background="{StaticResource AccentOrange}" Foreground="White"
+                                Command="{Binding Swarm.RtlAllCommand}" Margin="0,0,6,0"/>
+                    </StackPanel>
+                </Grid>
             </Border>
 
             <!-- MAIN CONTENT -->
@@ -414,10 +486,11 @@
                     <ColumnDefinition Width="*" MinWidth="400"/>
                 </Grid.ColumnDefinitions>
 
-                <!-- LEFT PANEL: Flight Data (contains its own TabControl) -->
+                <!-- LEFT PANEL: single-vehicle flight data, or the swarm roster -->
                 <Border Grid.Column="0"
                         Background="{StaticResource PanelBackground}">
-                    <!-- FlightPanelView is bound to Telemetry and contains all tabs -->
+                    <!-- Always present. It gains a SWARM tab in swarm mode, so MISSION,
+                         DATA, MESSAGES and the rest stay available in both modes. -->
                     <views:FlightPanelView DataContext="{Binding Telemetry}"/>
                 </Border>
 

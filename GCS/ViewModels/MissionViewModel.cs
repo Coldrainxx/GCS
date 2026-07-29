@@ -462,6 +462,38 @@ public class MissionViewModel : ViewModelBase
 
     #region Upload/Download/Clear on FC
 
+    public bool HasWaypoints => Waypoints.Count > 0;
+
+    /// <summary>
+    /// Build the mission exactly as <see cref="UploadAsync"/> does, so a swarm
+    /// upload sends every vehicle an identical list.
+    /// </summary>
+    public List<GCS.Core.Domain.MissionItem> BuildItems()
+    {
+        var items = Waypoints.Select((w, i) => w.ToMissionItem() with { Sequence = i }).ToList();
+        // Item 0 is home: ArduPilot expects it in the global (absolute-alt) frame.
+        if (Waypoints.Count > 0 && Waypoints[0].IsHome) items[0] = items[0] with { Frame = 0 };
+        return items;
+    }
+
+    /// <summary>Validation warnings for a built item list (empty when clean).</summary>
+    public static IReadOnlyList<string> Validate(IReadOnlyList<GCS.Core.Domain.MissionItem> items)
+        => MissionValidator.Validate(items);
+
+    /// <summary>
+    /// Send a prepared mission to whichever vehicle is currently targeted. Used by
+    /// the swarm uploader, which retargets between calls.
+    /// </summary>
+    public async Task SendItemsAsync(IReadOnlyList<GCS.Core.Domain.MissionItem> items, CancellationToken ct = default)
+    {
+        if (_missionService == null) throw new InvalidOperationException("Not connected");
+
+        if (items.Count == 0)
+            await _missionService.ClearAsync(ct);
+        else
+            await _missionService.UploadAsync(items.ToList(), ct);
+    }
+
     private async Task UploadAsync()
     {
         if (_missionService == null) return;

@@ -11,6 +11,17 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
     private readonly SynchronizationContext? _context;
     private readonly Timer _throttleTimer;
 
+    /// <summary>
+    /// System id this store represents. 0 means "whatever arrives" (single-vehicle
+    /// behaviour); any other value ignores telemetry from other vehicles, which is
+    /// what makes one store per drone possible on a shared link.
+    /// </summary>
+    private readonly byte _systemId;
+
+    public byte SystemId => _systemId;
+
+    private bool Mine(byte systemId) => _systemId == 0 || systemId == _systemId;
+
     // Guards _pending, _current and _hasPendingUpdate. Telemetry events arrive
     // on the transport thread while the throttle timer reads on a pool thread,
     // and Current may be read from the UI thread - all go through this lock.
@@ -42,10 +53,12 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
 
     public VehicleStateStore(
         IMavlinkBackend backend,
-        SynchronizationContext? context = null)
+        SynchronizationContext? context = null,
+        byte systemId = 0)
     {
         _backend = backend;
         _context = context ?? SynchronizationContext.Current;
+        _systemId = systemId;
         _pending = _current;
 
         _backend.ConnectionStateChanged += OnConnectionState;
@@ -64,27 +77,40 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
         => Mutate(s => s with { Connection = state });
 
     private void OnHeartbeat(HeartbeatState hb)
-        => Mutate(s =>
+    {
+        if (!Mine(hb.SystemId)) return;
+        Mutate(s =>
         {
             if (hb.Mode != null)
                 s = s with { FlightMode = hb.Mode };
             return s with { IsArmed = hb.IsArmed };
         });
+    }
 
-    private void OnAttitude(AttitudeState attitude)
-        => Mutate(s => s with { Attitude = attitude });
+    private void OnAttitude(byte sysId, AttitudeState attitude)
+    {
+        if (Mine(sysId)) Mutate(s => s with { Attitude = attitude });
+    }
 
-    private void OnPosition(PositionState position)
-        => Mutate(s => s with { Position = position });
+    private void OnPosition(byte sysId, PositionState position)
+    {
+        if (Mine(sysId)) Mutate(s => s with { Position = position });
+    }
 
-    private void OnVfrHud(VfrHudState hud)
-        => Mutate(s => s with { VfrHud = hud });
+    private void OnVfrHud(byte sysId, VfrHudState hud)
+    {
+        if (Mine(sysId)) Mutate(s => s with { VfrHud = hud });
+    }
 
-    private void OnBattery(BatteryState battery)
-        => Mutate(s => s with { Battery = battery });
+    private void OnBattery(byte sysId, BatteryState battery)
+    {
+        if (Mine(sysId)) Mutate(s => s with { Battery = battery });
+    }
 
-    private void OnGpsState(GpsState gps)
-        => Mutate(s => s with { Gps = gps });
+    private void OnGpsState(byte sysId, GpsState gps)
+    {
+        if (Mine(sysId)) Mutate(s => s with { Gps = gps });
+    }
 
     /// <summary>
     /// Applies an update to the accumulated state without touching the UI thread.

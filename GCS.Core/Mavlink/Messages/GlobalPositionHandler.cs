@@ -13,9 +13,9 @@ public sealed class GlobalPositionHandler : IMavlinkMessageHandler
 {
     public uint MessageId => 33;
 
-    private readonly Action<PositionState> _onPosition;
+    private readonly Action<byte, PositionState> _onPosition;
 
-    public GlobalPositionHandler(Action<PositionState> onPosition)
+    public GlobalPositionHandler(Action<byte, PositionState> onPosition)
     {
         _onPosition = onPosition;
      
@@ -80,7 +80,7 @@ public sealed class GlobalPositionHandler : IMavlinkMessageHandler
             );
 
 
-            _onPosition(state);
+            _onPosition(frame.SystemId, state);
  
         }
         catch (Exception ex)

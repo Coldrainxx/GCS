@@ -52,7 +52,26 @@ public class MainViewModel : ViewModelBase, IDisposable
     public ParametersViewModel Parameters { get; }
     public FirmwareViewModel Firmware { get; }
     public SetupViewModel Setup { get; }
+    public SwarmViewModel Swarm { get; } = new();
     public ToastsViewModel Toasts { get; } = new();
+
+    private bool _isSwarmMode;
+    /// <summary>
+    /// Swarm mode reshapes the whole app around the fleet: the side panel becomes
+    /// the vehicle roster and formation controls, and the action bar drives every
+    /// vehicle instead of one. The map stays visible in both modes.
+    /// </summary>
+    public bool IsSwarmMode
+    {
+        get => _isSwarmMode;
+        set
+        {
+            if (SetProperty(ref _isSwarmMode, value))
+                OnPropertyChanged(nameof(IsSingleVehicleMode));
+        }
+    }
+
+    public bool IsSingleVehicleMode => !_isSwarmMode;
 
     // ═══════════════════════════════════════════════════════════════
     // Constructor
@@ -137,8 +156,63 @@ public class MainViewModel : ViewModelBase, IDisposable
             failsafe: Failsafe,
             firmware: Firmware);
 
+        Swarm.PropertyChanged += OnSwarmPropertyChanged;
+
+        // Mission upload targets whichever vehicle is primary, so a swarm upload
+        // retargets around each transfer and restores the selection afterwards.
+        Swarm.SetMissionUploader(
+            uploadTo: async systemId =>
+            {
+                var backend = _session?.Backend
+                    ?? throw new InvalidOperationException("Not connected");
+
+                byte previous = backend.SystemId;
+                var items = Mission.BuildItems();
+
+                backend.SetPrimaryVehicle(systemId);
+                try
+                {
+                    await Mission.SendItemsAsync(items);
+                }
+                finally
+                {
+                    // Always hand the app back to the vehicle the user selected,
+                    // even if the transfer threw part-way through.
+                    if (previous != 0) backend.SetPrimaryVehicle(previous);
+                }
+            },
+            hasWaypoints: () => Mission.HasWaypoints);
+
         Connection.ConnectRequested += OnConnectRequested;
         Connection.DisconnectRequested += OnDisconnectRequested;
+    }
+
+    // Number of vehicles at the last mode decision, so we switch on the crossing
+    // rather than on every count change — otherwise a manual override would be
+    // undone by the next heartbeat.
+    private int _lastVehicleCount;
+
+    private void OnSwarmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(SwarmViewModel.Count)) return;
+
+        int count = Swarm.Count;
+        int previous = _lastVehicleCount;
+        _lastVehicleCount = count;
+
+        // A second vehicle appearing turns the app into a swarm controller;
+        // dropping back to one (or none) returns it to the single-UAV app.
+        // Between those crossings the Swarm button still overrides manually.
+        if (previous <= 1 && count > 1)
+        {
+            IsSwarmMode = true;
+            Notifier.Info($"{count} vehicles detected — swarm mode");
+        }
+        else if (previous > 1 && count <= 1)
+        {
+            IsSwarmMode = false;
+            if (count == 1) Notifier.Info("Single vehicle — swarm mode off");
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -189,6 +263,7 @@ public class MainViewModel : ViewModelBase, IDisposable
 
         Actions = new ActionsViewModel(_session.Backend);
         OnPropertyChanged(nameof(Actions));
+        Swarm.Attach(_session.Backend, syncContext);
         Preflight.SetBackend(_session.Backend);
         Mission.SetMissionService(_session.MissionService);
 
@@ -308,8 +383,17 @@ public class MainViewModel : ViewModelBase, IDisposable
     // Event Handlers
     // ═══════════════════════════════════════════════════════════════
 
-    private void OnParameterReceived(string paramId, float value)
+    private void OnParameterReceived(byte systemId, string paramId, float value)
     {
+        // The parameter/setup editors act on one vehicle at a time. On a shared
+        // swarm link every drone's PARAM_VALUE arrives here, so anything that
+        // isn't the active vehicle must be dropped — otherwise drone 2's values
+        // would silently overwrite what's shown (and then be written back) for
+        // drone 1.
+        var backend = _session?.Backend;
+        if (backend != null && backend.SystemId != 0 && systemId != backend.SystemId)
+            return;
+
         Failsafe.OnParameterReceived(paramId, value);
         Parameters.OnParameterReceived(paramId, value);
         Setup.OnParameter(paramId, value);
@@ -347,6 +431,18 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     private void OnVehicleStateChanged(VehicleState state)
     {
+        // The session-level store is unfiltered, so on a shared link it merges
+        // every drone into one state — the HUD would blend them. Once vehicles
+        // have been discovered, use the active one's own filtered state instead
+        // so the HUD, map marker and action bar all describe the same aircraft.
+        var active = Swarm.ActiveVehicle;
+        if (active != null)
+        {
+            var owned = active.State;
+            // Connection is a property of the link, not of one vehicle.
+            state = owned with { Connection = owned.Connection ?? state.Connection };
+        }
+
         Telemetry.UpdateState(state);
         Actions?.UpdateFromVehicleState(state);
 
@@ -414,6 +510,8 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     private async Task CleanupAsync()
     {
+        Swarm.Detach();
+
         if (_session != null)
         {
             _session.TransportStateChanged -= OnTransportStateChanged;

@@ -13,9 +13,9 @@ public sealed class AttitudeHandler : IMavlinkMessageHandler
 {
     public uint MessageId => 30;
 
-    private readonly Action<AttitudeState> _onAttitude;
+    private readonly Action<byte, AttitudeState> _onAttitude;
 
-    public AttitudeHandler(Action<AttitudeState> onAttitude)
+    public AttitudeHandler(Action<byte, AttitudeState> onAttitude)
     {
         _onAttitude = onAttitude;
  
@@ -35,7 +35,7 @@ public sealed class AttitudeHandler : IMavlinkMessageHandler
 
  
 
-            _onAttitude(new AttitudeState(
+            _onAttitude(frame.SystemId, new AttitudeState(
                 RollRad: roll,
                 PitchRad: pitch,
                 YawRad: yaw,

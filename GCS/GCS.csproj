@@ -9,18 +9,19 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="Models\WCR.master_1.stl" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Content Include="Models\WCR.master_1.stl">
+    <!-- MapLibre map app (html/js/css + vendored libs + optional offline basemap).
+         The STLs are excluded here and copied from Models\ below instead, so the
+         ~32 MB of geometry exists once in the source tree and once in the output. -->
+    <Content Include="Map\**\*.*" Exclude="Map\models\*.stl">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-  </ItemGroup>
 
-  <ItemGroup>
-    <!-- MapLibre map app (html/js/css + vendored libs + optional offline basemap). -->
-    <Content Include="Map\**\*.*">
+    <!-- Models\ is the tracked source of truth for 3D geometry. It is staged into
+         the output under Map\models\ because the map has to serve it from there
+         over the WebView2 virtual host; the 3D tab reads that same staged copy.
+         Keeping this a build step means the file is never duplicated on disk in
+         the repo (Map\models\*.stl is gitignored for exactly that reason). -->
+    <Content Include="Models\*.stl" Link="Map\models\%(Filename)%(Extension)">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>

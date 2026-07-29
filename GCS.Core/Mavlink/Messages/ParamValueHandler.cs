@@ -13,9 +13,9 @@ public sealed class ParamValueHandler : IMavlinkMessageHandler
 {
     public uint MessageId => 22;
 
-    private readonly Action<string, float> _onParamValue;
+    private readonly Action<byte, string, float> _onParamValue;
 
-    public ParamValueHandler(Action<string, float> onParamValue)
+    public ParamValueHandler(Action<byte, string, float> onParamValue)
     {
         _onParamValue = onParamValue;
     }
@@ -29,7 +29,7 @@ public sealed class ParamValueHandler : IMavlinkMessageHandler
 
             Debug.WriteLine($"[ParamValueHandler] {paramId} = {paramValue}");
 
-            _onParamValue(paramId, paramValue);
+            _onParamValue(frame.SystemId, paramId, paramValue);
         }
         catch (Exception ex)
         {

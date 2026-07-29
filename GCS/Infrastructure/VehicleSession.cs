@@ -91,7 +91,7 @@ public sealed class VehicleSession : IAsyncDisposable
     public event Action<ServoOutputData>? ServoOutputReceived;
     public event Action<MagCalProgressData>? MagCalProgressReceived;
     public event Action<MagCalReportData>? MagCalReportReceived;
-    public event Action<string, float>? ParameterReceived;
+    public event Action<byte, string, float>? ParameterReceived;
     public event Action<VehicleState>? VehicleStateChanged;
     public event Action<HealthState>? HealthChanged;
     public event Action<IReadOnlyList<AlertState>>? AlertsChanged;
@@ -160,7 +160,7 @@ public sealed class VehicleSession : IAsyncDisposable
     private void RaiseServoOutput(ServoOutputData d) => ServoOutputReceived?.Invoke(d);
     private void RaiseMagCalProgress(MagCalProgressData d) => MagCalProgressReceived?.Invoke(d);
     private void RaiseMagCalReport(MagCalReportData d) => MagCalReportReceived?.Invoke(d);
-    private void RaiseParameter(string id, float v) => ParameterReceived?.Invoke(id, v);
+    private void RaiseParameter(byte sysId, string id, float v) => ParameterReceived?.Invoke(sysId, id, v);
     private void RaiseVehicleState(VehicleState s) => VehicleStateChanged?.Invoke(s);
     private void RaiseHealth(HealthState h) => HealthChanged?.Invoke(h);
     private void RaiseAlerts(IReadOnlyList<AlertState> a) => AlertsChanged?.Invoke(a);

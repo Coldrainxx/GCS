@@ -67,6 +67,11 @@ public partial class MainWindow : Window
                 SetupButton_Click(this, new RoutedEventArgs());
                 e.Handled = true;
             }
+            else if (e.Key == Key.W)
+            {
+                SwarmButton_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+            }
         }
     }
 
@@ -134,6 +139,20 @@ public partial class MainWindow : Window
     private void SetupButton_Click(object sender, RoutedEventArgs e)
     {
         ShowFullScreen(SetupPanel.Visibility != Visibility.Visible ? FullScreen.Setup : FullScreen.None);
+    }
+
+    /// <summary>
+    /// Swarm mode normally engages on its own when a second vehicle is heard.
+    /// This button is a manual override — useful to focus on one aircraft while
+    /// several are connected, or to preview the swarm view before they arrive.
+    /// </summary>
+    private void SwarmButton_Click(object sender, RoutedEventArgs e)
+    {
+        _viewModel.IsSwarmMode = !_viewModel.IsSwarmMode;
+
+        // Leaving a full-window panel open would hide the mode change.
+        if (ParamsView.Visibility == Visibility.Visible || SetupPanel.Visibility == Visibility.Visible)
+            ShowFullScreen(FullScreen.None);
     }
 
     private enum FullScreen { None, Params, Setup }

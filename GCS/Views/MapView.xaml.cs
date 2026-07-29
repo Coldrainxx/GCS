@@ -1,7 +1,10 @@
 ﻿using Microsoft.Web.WebView2.Core;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using System.IO;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,6 +24,11 @@ public partial class MapView : UserControl
     private GCS.ViewModels.MissionViewModel? _missionVm;
     private GCS.ViewModels.MainViewModel? _mainVm;
 
+    // The swarm is pushed on a timer rather than per property change: with several
+    // vehicles updating at ~30 fps each, per-change scripting would flood WebView2.
+    private System.Windows.Threading.DispatcherTimer? _swarmTimer;
+    private bool _swarmWasDrawn;
+
     public MapView()
     {
         InitializeComponent();
@@ -39,7 +47,45 @@ public partial class MapView : UserControl
             _missionVm.WaypointAdded += OnWaypointAdded;
             _missionVm.WaypointUpdated += OnWaypointUpdated;
             _missionVm.WaypointsRebuilt += OnWaypointsRebuilt;
+
+            _swarmTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(100)   // 10 Hz is plenty for map markers
+            };
+            _swarmTimer.Tick += OnSwarmTick;
+            _swarmTimer.Start();
+
+            mainVm.PropertyChanged += OnMainViewModelPropertyChanged;
         }
+    }
+
+    private void OnSwarmTick(object? sender, EventArgs e)
+    {
+        var vm = _mainVm;
+        if (vm == null || !_isMapInitialized) return;
+
+        // Single-UAV mode draws only the active vehicle, the way it always did.
+        if (!vm.IsSwarmMode) return;
+
+        if (vm.Swarm.Count > 0)
+        {
+            UpdateSwarm(vm.Swarm.Vehicles);
+            _swarmWasDrawn = true;
+        }
+        else if (_swarmWasDrawn)
+        {
+            // Last vehicle went away — take the markers off the map once.
+            ClearSwarm();
+            _swarmWasDrawn = false;
+        }
+    }
+
+    private void OnMainViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(GCS.ViewModels.MainViewModel.IsSwarmMode)) return;
+        bool on = _mainVm?.IsSwarmMode == true;
+        ExecuteScript($"setSwarmMode({(on ? "true" : "false")});");
+        if (!on) _swarmWasDrawn = false;
     }
 
     private void OnWaypointsCleared() => ExecuteScript("clearWaypoints();");
@@ -155,6 +201,9 @@ public partial class MapView : UserControl
             _isMapInitialized = true;
             if (LoadingOverlay != null) LoadingOverlay.Visibility = Visibility.Collapsed;
 
+            // The map starts in single-UAV mode; sync it in case we're already in swarm mode.
+            if (_mainVm?.IsSwarmMode == true) ExecuteScript("setSwarmMode(true);");
+
             if (DataContext is GCS.ViewModels.TelemetryViewModel vm)
             {
                 UpdateUAVPosition(vm.Latitude, vm.Longitude, vm.Altitude, vm.AltitudeRelative, vm.Groundspeed, vm.Airspeed, vm.Heading);
@@ -243,4 +292,49 @@ public partial class MapView : UserControl
             satellites, fixType, hdop);
         ExecuteScript(script);
     }
+
+    /// <summary>
+    /// Push the whole swarm to the map: one marker (2D) and one 3D model per
+    /// vehicle, with the leader highlighted. Vehicles absent from the list are
+    /// removed, so this call is the complete picture.
+    /// </summary>
+    public void UpdateSwarm(IEnumerable<GCS.ViewModels.VehicleViewModel> vehicles)
+    {
+        if (!_isMapInitialized || MapWebView?.CoreWebView2 == null) return;
+
+        var list = vehicles.ToList();
+        var leader = list.FirstOrDefault(v => v.IsLeader && v.HasPosition);
+
+        var sb = new StringBuilder("[");
+        bool first = true;
+        foreach (var v in list)
+        {
+            if (!v.HasPosition) continue;   // nothing to draw until it has a fix
+            if (!first) sb.Append(',');
+            first = false;
+            sb.AppendFormat(CultureInfo.InvariantCulture,
+                "{{\"id\":{0},\"lat\":{1:F7},\"lon\":{2:F7},\"alt\":{3:F1},\"hdg\":{4:F1}," +
+                "\"roll\":{5:F1},\"pitch\":{6:F1},\"leader\":{7},\"active\":{8}",
+                v.SystemId, v.Latitude, v.Longitude, v.AltitudeRel, v.Heading,
+                v.RollDeg, v.PitchDeg,
+                v.IsLeader ? "true" : "false",
+                v.IsActive ? "true" : "false");
+
+            // Where this follower's formation station sits on the ground, so the
+            // shape can be seen before it's flown.
+            if (leader != null && !v.IsLeader && v.Station is { } station)
+            {
+                var (slat, slon) = GCS.Core.Swarm.FormationGeometry.StationPosition(
+                    leader.Latitude, leader.Longitude, leader.Heading, station);
+                sb.AppendFormat(CultureInfo.InvariantCulture,
+                    ",\"slat\":{0:F7},\"slon\":{1:F7}", slat, slon);
+            }
+            sb.Append('}');
+        }
+        sb.Append(']');
+
+        ExecuteScript("updateSwarm(" + sb + ");");
+    }
+
+    public void ClearSwarm() => ExecuteScript("clearSwarm();");
 }

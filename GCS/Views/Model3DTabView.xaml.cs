@@ -2,6 +2,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -22,6 +23,38 @@ public partial class Model3DTabView : UserControl
     private AxisAngleRotation3D? _rotationPitch;
     private AxisAngleRotation3D? _rotationYaw;
     private bool _modelLoaded;
+
+    // ── Swarm view ───────────────────────────────────────────────────
+    // In swarm mode the tab shows every drone in its real relative position
+    // instead of one model. Meshes are shared between drones — the STL is large.
+    private const string SwarmStlFilename = "swarmdrone.stl";
+    // Preferred drone size in scene units. Actual size is capped so neighbours
+    // never overlap — see UpdateSwarmModels — so this and the fleet extent below
+    // no longer have to be balanced against each other by hand.
+    private const double SwarmDroneSize = 3.0;
+    private const double SwarmTargetExtent = 3.0;   // scene units the fleet spans
+    private const double SwarmMinSeparationFactor = 0.75; // of the gap to nearest neighbour
+    private const double MetresPerDegreeLat = 110540.0;
+    private const double MetresPerDegreeLonAtEquator = 111320.0;
+
+    private GCS.ViewModels.MainViewModel? _mainVm;
+    private readonly ModelVisual3D _swarmRoot = new();
+    private readonly System.Collections.Generic.List<MeshGeometry3D> _sharedMeshes = new();
+    private readonly System.Collections.Generic.Dictionary<byte, SwarmDrone> _swarmDrones = new();
+    private double _swarmModelScale = 1.0;
+    private bool _swarmMeshesAttempted;
+
+    private sealed class SwarmDrone
+    {
+        public ModelVisual3D Visual = null!;
+        public TranslateTransform3D Position = null!;
+        public ScaleTransform3D Scale = null!;
+        public AxisAngleRotation3D Roll = null!;
+        public AxisAngleRotation3D Pitch = null!;
+        public AxisAngleRotation3D Yaw = null!;
+        public bool IsLeader;
+        public Model3DGroup Model = null!;
+    }
 
     private readonly DispatcherTimer _updateTimer;
     private double _targetRoll;
@@ -116,6 +149,13 @@ public partial class Model3DTabView : UserControl
     {
         Debug.WriteLine("[Model3D] OnLoaded");
         LoadSTLModel();
+
+        if (!Viewport3D.Children.Contains(_swarmRoot))
+            Viewport3D.Children.Add(_swarmRoot);
+
+        if (_mainVm == null && Window.GetWindow(this)?.DataContext is GCS.ViewModels.MainViewModel vm)
+            _mainVm = vm;
+
         if (IsVisible) _updateTimer.Start();
     }
 
@@ -140,9 +180,231 @@ public partial class Model3DTabView : UserControl
 
     private void OnUpdateTimerTick(object? sender, EventArgs e)
     {
+        bool swarmMode = _mainVm?.IsSwarmMode == true;
+
+        if (swarmMode)
+        {
+            UpdateSwarmModels();
+            return;
+        }
+
+        if (_swarmDrones.Count > 0) ClearSwarmModels();
+
         if (!_needsUpdate || !_modelLoaded) return;
         _needsUpdate = false;
         UpdateModelRotation();
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Swarm rendering
+    // ═══════════════════════════════════════════════════════════════
+
+    private void UpdateSwarmModels()
+    {
+        var swarm = _mainVm?.Swarm;
+        if (swarm == null) return;
+
+        EnsureSwarmMeshes();            // loads swarmdrone.stl on first use
+        if (_sharedMeshes.Count == 0) return;
+
+        var vehicles = swarm.Vehicles.Where(v => v.HasPosition).ToList();
+        if (vehicles.Count == 0) { ClearSwarmModels(); return; }
+
+        // Single model is replaced by the fleet.
+        UAVModelVisual.Content = null;
+
+        // Frame relative to the leader when there is one, else the first vehicle.
+        var reference = vehicles.FirstOrDefault(v => v.IsLeader) ?? vehicles[0];
+        double refLat = reference.Latitude, refLon = reference.Longitude, refAlt = reference.AltitudeRel;
+        double lonScale = MetresPerDegreeLonAtEquator * Math.Cos(refLat * Math.PI / 180.0);
+
+        // Local ENU offsets in metres.
+        var offsets = new System.Collections.Generic.Dictionary<byte, (double E, double N, double U)>();
+        double maxExtent = 0;
+        foreach (var v in vehicles)
+        {
+            double e = (v.Longitude - refLon) * lonScale;
+            double n = (v.Latitude - refLat) * MetresPerDegreeLat;
+            double u = v.AltitudeRel - refAlt;
+            offsets[v.SystemId] = (e, n, u);
+            maxExtent = Math.Max(maxExtent, Math.Max(Math.Abs(e), Math.Max(Math.Abs(n), Math.Abs(u))));
+        }
+
+        // Fit the fleet into a sensible volume regardless of real separation.
+        double sceneScale = maxExtent > 1.0 ? SwarmTargetExtent / maxExtent : 0.05;
+
+        // Cap drone size at a fraction of the closest gap between two aircraft,
+        // so a tight formation shrinks the models instead of turning into a blob.
+        double droneSize = SwarmDroneSize;
+        double closestGap = ClosestPairDistance(offsets, sceneScale);
+        if (closestGap > 0)
+            droneSize = Math.Min(droneSize, closestGap * SwarmMinSeparationFactor);
+        double modelScale = _swarmModelScale * (droneSize / SwarmDroneSize);
+
+        foreach (var v in vehicles)
+        {
+            var drone = EnsureSwarmDrone(v.SystemId, v.IsLeader);
+            if (drone == null) continue;
+
+            drone.Scale.ScaleX = drone.Scale.ScaleY = drone.Scale.ScaleZ = modelScale;
+
+            if (drone.IsLeader != v.IsLeader)
+            {
+                drone.IsLeader = v.IsLeader;
+                ApplySwarmMaterial(drone.Model, v.IsLeader);
+            }
+
+            var (e, n, u) = offsets[v.SystemId];
+            drone.Position.OffsetX = e * sceneScale;
+            drone.Position.OffsetY = n * sceneScale;
+            drone.Position.OffsetZ = u * sceneScale;
+
+            drone.Roll.Angle = v.RollDeg;
+            drone.Pitch.Angle = -v.PitchDeg;
+            drone.Yaw.Angle = v.YawDeg;
+        }
+
+        // Drop drones that are gone.
+        var live = vehicles.Select(v => v.SystemId).ToHashSet();
+        foreach (var id in _swarmDrones.Keys.Where(k => !live.Contains(k)).ToList())
+        {
+            _swarmRoot.Children.Remove(_swarmDrones[id].Visual);
+            _swarmDrones.Remove(id);
+        }
+    }
+
+    /// <summary>
+    /// Distance between the two closest aircraft, in scene units. Returns 0 for a
+    /// single vehicle (nothing to collide with, so the preferred size stands).
+    /// The fleet is small — a few dozen at most — so the naive pairwise sweep is fine.
+    /// </summary>
+    private static double ClosestPairDistance(
+        System.Collections.Generic.Dictionary<byte, (double E, double N, double U)> offsets,
+        double sceneScale)
+    {
+        if (offsets.Count < 2) return 0;
+
+        var pts = new System.Collections.Generic.List<(double E, double N, double U)>(offsets.Values);
+        double closest = double.MaxValue;
+
+        for (int i = 0; i < pts.Count; i++)
+            for (int j = i + 1; j < pts.Count; j++)
+            {
+                double de = pts[i].E - pts[j].E;
+                double dn = pts[i].N - pts[j].N;
+                double du = pts[i].U - pts[j].U;
+                double d = Math.Sqrt(de * de + dn * dn + du * du);
+                if (d < closest) closest = d;
+            }
+
+        // Two drones reporting the same position would otherwise scale them to
+        // nothing; leave the preferred size alone instead.
+        double gap = closest * sceneScale;
+        return gap > 1e-4 ? gap : 0;
+    }
+
+    private SwarmDrone? EnsureSwarmDrone(byte systemId, bool isLeader)
+    {
+        if (_swarmDrones.TryGetValue(systemId, out var existing)) return existing;
+        if (_sharedMeshes.Count == 0) return null;
+
+        var model = new Model3DGroup();
+        foreach (var mesh in _sharedMeshes)
+            model.Children.Add(new GeometryModel3D { Geometry = mesh });   // mesh shared, not copied
+        ApplySwarmMaterial(model, isLeader);
+
+        var transforms = new Transform3DGroup();
+        var scale = new ScaleTransform3D(_swarmModelScale, _swarmModelScale, _swarmModelScale);
+        transforms.Children.Add(scale);
+
+        var yaw = new AxisAngleRotation3D(new Vector3D(0, 0, 1), 0);
+        var pitch = new AxisAngleRotation3D(new Vector3D(-1, 0, 0), 0);
+        var roll = new AxisAngleRotation3D(new Vector3D(0, 1, 0), 0);
+        transforms.Children.Add(new RotateTransform3D(yaw));
+        transforms.Children.Add(new RotateTransform3D(pitch));
+        transforms.Children.Add(new RotateTransform3D(roll));
+
+        var position = new TranslateTransform3D(0, 0, 0);
+        transforms.Children.Add(position);
+        model.Transform = transforms;
+
+        var visual = new ModelVisual3D { Content = model };
+        _swarmRoot.Children.Add(visual);
+
+        var drone = new SwarmDrone
+        {
+            Visual = visual, Model = model, Position = position, Scale = scale,
+            Roll = roll, Pitch = pitch, Yaw = yaw, IsLeader = isLeader
+        };
+        _swarmDrones[systemId] = drone;
+        return drone;
+    }
+
+    /// <summary>
+    /// Load the swarm drone model once and keep its meshes pre-centred and frozen,
+    /// so every drone in the fleet references the same geometry rather than the
+    /// app re-reading a large STL per vehicle. Falls back to the single-vehicle
+    /// model if the swarm STL isn't present.
+    /// </summary>
+    private void EnsureSwarmMeshes()
+    {
+        if (_sharedMeshes.Count > 0 || _swarmMeshesAttempted) return;
+        _swarmMeshesAttempted = true;
+
+        try
+        {
+            string? path = FindStlFile(SwarmStlFilename) ?? FindStlFile(DefaultStlFilename);
+            if (path == null) { Debug.WriteLine("[Model3D] No swarm STL found"); return; }
+
+            var model = new StLReader().Read(path);
+            if (model == null || model.Children.Count == 0) return;
+
+            var b = model.Bounds;
+            var center = new Point3D(b.X + b.SizeX / 2, b.Y + b.SizeY / 2, b.Z + b.SizeZ / 2);
+
+            foreach (var child in model.Children)
+            {
+                if (child is not GeometryModel3D g || g.Geometry is not MeshGeometry3D mesh) continue;
+
+                var centred = new MeshGeometry3D();
+                foreach (var p in mesh.Positions)
+                    centred.Positions.Add(new Point3D(p.X - center.X, p.Y - center.Y, p.Z - center.Z));
+                foreach (var i in mesh.TriangleIndices) centred.TriangleIndices.Add(i);
+                foreach (var n in mesh.Normals) centred.Normals.Add(n);
+                centred.Freeze();               // frozen => safely shared across visuals
+                _sharedMeshes.Add(centred);
+            }
+
+            // Scale from this model's own bounds, so it doesn't matter what units
+            // the STL was exported in or how it compares to the other model.
+            double extent = Math.Max(b.SizeX, Math.Max(b.SizeY, b.SizeZ));
+            _swarmModelScale = extent > 0 ? SwarmDroneSize / extent : 1.0;
+
+            Debug.WriteLine($"[Model3D] Swarm model loaded from {path} (extent {extent:F1}, scale {_swarmModelScale:G3})");
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[Model3D] Swarm model load failed: {ex.Message}");
+        }
+    }
+
+    private static void ApplySwarmMaterial(Model3DGroup model, bool isLeader)
+    {
+        var colour = isLeader ? Color.FromRgb(255, 176, 0) : Color.FromRgb(57, 208, 216);
+        var material = new DiffuseMaterial(new SolidColorBrush(colour));
+        material.Freeze();
+        foreach (var child in model.Children)
+        {
+            if (child is GeometryModel3D g) { g.Material = material; g.BackMaterial = material; }
+        }
+    }
+
+    private void ClearSwarmModels()
+    {
+        _swarmRoot.Children.Clear();
+        _swarmDrones.Clear();
+        // Put the single model back for single-vehicle mode.
+        if (_modelLoaded && UAVModelVisual.Content == null) LoadSTLModel();
     }
 
     private void LoadSTLModel()
@@ -193,12 +455,18 @@ public partial class Model3DTabView : UserControl
         string exeDir = AppDomain.CurrentDomain.BaseDirectory;
         string? projectDir = GetProjectDirectory();
 
+        // Map\models is the canonical home for the STLs: the map has to serve them
+        // over the WebView2 virtual host from there, so the 3D tab reads the same
+        // copy rather than the build shipping a second one. Models\ stays in the
+        // list so a hand-placed or user-supplied model still resolves.
         var searchPaths = new[]
         {
             Path.Combine(exeDir, filename),
+            Path.Combine(exeDir, "Map", "models", justFilename),
             Path.Combine(exeDir, "Models", justFilename),
             Path.Combine(exeDir, "Assets", justFilename),
             Path.Combine(exeDir, justFilename),
+            projectDir != null ? Path.Combine(projectDir, "Map", "models", justFilename) : null,
             projectDir != null ? Path.Combine(projectDir, "Models", justFilename) : null,
             projectDir != null ? Path.Combine(projectDir, "Assets", justFilename) : null,
             projectDir != null ? Path.Combine(projectDir, justFilename) : null,
