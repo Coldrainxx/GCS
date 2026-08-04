@@ -50,6 +50,28 @@ internal sealed class FakeBackend : IMavlinkBackend
     public event Action<MagCalProgressData>? MagCalProgressReceived;
     public event Action<MagCalReportData>? MagCalReportReceived;
     public event Action<byte, GpsState>? GpsStateReceived;
+    public event Action<byte, VibrationState>? VibrationReceived;
+    public event Action<byte, EkfStatusState>? EkfStatusReceived;
+    public event Action<byte, BatteryStatusState>? BatteryStatusReceived;
+    public event Action<byte, PowerStatusState>? PowerStatusReceived;
+    public event Action<byte, EscTelemetryState>? EscTelemetryReceived;
+
+    /// <summary>Records that the streams were requested, without a real link.</summary>
+    public int HealthStreamRequests { get; private set; }
+
+    public Task RequestHealthStreamsAsync(byte targetSystem = 0, CancellationToken ct = default)
+    {
+        HealthStreamRequests++;
+        return Task.CompletedTask;
+    }
+
+    // Raise the health events from tests.
+    public void EmitVibration(byte sys, VibrationState v) => VibrationReceived?.Invoke(sys, v);
+    public void EmitEkf(byte sys, EkfStatusState e) => EkfStatusReceived?.Invoke(sys, e);
+    public void EmitBatteryStatus(byte sys, BatteryStatusState b) => BatteryStatusReceived?.Invoke(sys, b);
+    public void EmitPower(byte sys, PowerStatusState p) => PowerStatusReceived?.Invoke(sys, p);
+    public void EmitEsc(byte sys, EscTelemetryState e) => EscTelemetryReceived?.Invoke(sys, e);
+    public void EmitServoOutput(ServoOutputData d) => ServoOutputReceived?.Invoke(d);
     public event Action<ReadOnlyMemory<byte>>? RawFrameReceived;
     public event Action<ReadOnlyMemory<byte>>? RawFrameSent;
     public event Action<AutopilotMessage>? AutopilotMessageReceived;

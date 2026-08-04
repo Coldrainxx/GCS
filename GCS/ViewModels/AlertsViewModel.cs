@@ -69,7 +69,11 @@ public class AlertsViewModel : ViewModelBase
         set
         {
             if (SetProperty(ref _batteryVoltage, value))
+            {
                 OnPropertyChanged(nameof(BatteryStatusColor));
+                OnPropertyChanged(nameof(HasBatteryMonitor));
+                OnPropertyChanged(nameof(BatteryText));
+            }
         }
     }
 
@@ -79,7 +83,10 @@ public class AlertsViewModel : ViewModelBase
         set
         {
             if (SetProperty(ref _batteryPercent, value))
+            {
                 OnPropertyChanged(nameof(BatteryStatusColor));
+                OnPropertyChanged(nameof(BatteryText));
+            }
         }
     }
 
@@ -109,7 +116,18 @@ public class AlertsViewModel : ViewModelBase
     public string ArmedStatusText => IsArmed ? "ARMED" : "DISARMED";
     public string ArmedStatusColor => IsArmed ? "#F85149" : "#3FB950";
 
+    /// <summary>
+    /// False when no battery monitor is fitted. ArduPilot reports 0 V and -1%
+    /// with BATT_MONITOR disabled, which otherwise rendered as a red "-1% 0.2V".
+    /// </summary>
+    public bool HasBatteryMonitor =>
+        BatteryVoltage >= GCS.Core.Advisor.FlightHealthAnalyzer.MinPlausiblePackVolts;
+
+    public string BatteryText =>
+        HasBatteryMonitor ? $"{BatteryPercent}% {BatteryVoltage:F1}V" : "NO BATT";
+
     public string BatteryStatusColor =>
+        !HasBatteryMonitor ? "#5A636D" :          // grey: nothing measured, not an alarm
         BatteryPercent <= 20 ? "#F85149" :
         BatteryPercent <= 40 ? "#FF9500" :
         "#3FB950";

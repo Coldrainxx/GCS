@@ -102,13 +102,9 @@
                                 <SolidColorBrush Color="{Binding BatteryStatusColor}"/>
                             </Ellipse.Fill>
                         </Ellipse>
-                        <TextBlock Foreground="{StaticResource TextSecondary}" 
-                                  FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center">
-                            <Run Text="{Binding BatteryPercent, Mode=OneWay, StringFormat={}{0}%}"/>
-                            <Run Text=" "/>
-                            <Run Text="{Binding BatteryVoltage, Mode=OneWay, StringFormat={}{0:F1}V}" 
-                                 Foreground="{StaticResource Cyan}"/>
-                        </TextBlock>
+                        <TextBlock Text="{Binding BatteryText, Mode=OneWay}"
+                                  Foreground="{StaticResource TextSecondary}"
+                                  FontSize="10" FontWeight="SemiBold" VerticalAlignment="Center"/>
                     </StackPanel>
                 </Border>
 

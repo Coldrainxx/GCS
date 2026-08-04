@@ -69,6 +69,13 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
         _backend.BatteryReceived += OnBattery;
         _backend.GpsStateReceived += OnGpsState;
 
+        _backend.VibrationReceived += OnVibration;
+        _backend.EkfStatusReceived += OnEkfStatus;
+        _backend.BatteryStatusReceived += OnBatteryStatus;
+        _backend.PowerStatusReceived += OnPowerStatus;
+        _backend.EscTelemetryReceived += OnEscTelemetry;
+        _backend.ServoOutputReceived += OnServoOutput;
+
         // Timer fires on a threadpool thread, then posts to UI.
         _throttleTimer = new Timer(OnThrottleTick, null, ThrottleIntervalMs, ThrottleIntervalMs);
     }
@@ -110,6 +117,42 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
     private void OnGpsState(byte sysId, GpsState gps)
     {
         if (Mine(sysId)) Mutate(s => s with { Gps = gps });
+    }
+
+    private void OnVibration(byte sysId, VibrationState v)
+    {
+        if (Mine(sysId)) Mutate(s => s with { Vibration = v });
+    }
+
+    private void OnEkfStatus(byte sysId, EkfStatusState e)
+    {
+        if (Mine(sysId)) Mutate(s => s with { Ekf = e });
+    }
+
+    private void OnBatteryStatus(byte sysId, BatteryStatusState b)
+    {
+        if (Mine(sysId)) Mutate(s => s with { BatteryStatus = b });
+    }
+
+    private void OnPowerStatus(byte sysId, PowerStatusState p)
+    {
+        if (Mine(sysId)) Mutate(s => s with { Power = p });
+    }
+
+    private void OnEscTelemetry(byte sysId, EscTelemetryState e)
+    {
+        if (Mine(sysId)) Mutate(s => s with { Esc = e });
+    }
+
+    /// <summary>
+    /// SERVO_OUTPUT_RAW predates the per-vehicle demux, so it carries no system id.
+    /// On a shared swarm link that makes it ambiguous — accept it only for the
+    /// unfiltered store rather than attributing it to the wrong aircraft.
+    /// </summary>
+    private void OnServoOutput(GCS.Core.Mavlink.Messages.ServoOutputData data)
+    {
+        if (_systemId != 0) return;
+        Mutate(s => s with { ServoOutput = new ServoOutputState(data.ToArray(), DateTime.UtcNow) });
     }
 
     /// <summary>
@@ -161,5 +204,12 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
         _backend.VfrHudReceived -= OnVfrHud;
         _backend.BatteryReceived -= OnBattery;
         _backend.GpsStateReceived -= OnGpsState;
+
+        _backend.VibrationReceived -= OnVibration;
+        _backend.EkfStatusReceived -= OnEkfStatus;
+        _backend.BatteryStatusReceived -= OnBatteryStatus;
+        _backend.PowerStatusReceived -= OnPowerStatus;
+        _backend.EscTelemetryReceived -= OnEscTelemetry;
+        _backend.ServoOutputReceived -= OnServoOutput;
     }
 }

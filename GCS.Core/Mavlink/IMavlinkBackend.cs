@@ -23,6 +23,17 @@ public interface IMavlinkBackend : IDisposable
     event Action<MagCalReportData>? MagCalReportReceived;
     event Action<byte, GpsState>? GpsStateReceived;
 
+    // Health telemetry. Silent until RequestHealthStreamsAsync asks for it —
+    // ArduPilot streams none of these by default.
+    event Action<byte, VibrationState>? VibrationReceived;
+    event Action<byte, EkfStatusState>? EkfStatusReceived;
+    event Action<byte, BatteryStatusState>? BatteryStatusReceived;
+    event Action<byte, PowerStatusState>? PowerStatusReceived;
+    event Action<byte, EscTelemetryState>? EscTelemetryReceived;
+
+    /// <summary>Ask the autopilot to start streaming the health messages.</summary>
+    Task RequestHealthStreamsAsync(byte targetSystem = 0, CancellationToken ct = default);
+
     /// <summary>Raw complete MAVLink packets, for telemetry logging (RX / TX).</summary>
     event Action<ReadOnlyMemory<byte>>? RawFrameReceived;
     event Action<ReadOnlyMemory<byte>>? RawFrameSent;

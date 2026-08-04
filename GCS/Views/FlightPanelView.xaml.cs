@@ -32,6 +32,13 @@ public partial class FlightPanelView : UserControl
         else SelectDataTab();
     }
 
+    /// <summary>Jump to post-flight review, from the top-bar Logs button.</summary>
+    public void SelectLogTab()
+    {
+        var tabs = FindTabControl();
+        if (tabs != null && LogTab != null) tabs.SelectedItem = LogTab;
+    }
+
     private void SelectDataTab()
     {
         var tabs = FindTabControl();
@@ -42,6 +49,16 @@ public partial class FlightPanelView : UserControl
     // tab was open before, rather than stranding the user on a hidden tab.
     private void OnMainViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        // Log review hides every other tab, so entering it must select LOG and
+        // leaving it must land somewhere still visible.
+        if (e.PropertyName == nameof(GCS.ViewModels.MainViewModel.IsLogReviewMode))
+        {
+            if (_mainVm?.IsLogReviewMode == true) SelectLogTab();
+            else if (_mainVm?.IsSwarmMode == true) SelectSwarmTab();
+            else SelectDataTab();
+            return;
+        }
+
         if (e.PropertyName != nameof(GCS.ViewModels.MainViewModel.IsSwarmMode)) return;
 
         if (_mainVm?.IsSwarmMode == true)

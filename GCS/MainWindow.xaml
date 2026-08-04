@@ -135,6 +135,16 @@
                                       Foreground="{StaticResource PrimaryText}"/>
                         </Button>
 
+                        <Button x:Name="LogsButton"
+                                Style="{StaticResource ModernButtonStyle}"
+                                Margin="8,0,0,0"
+                                Click="LogsButton_Click">
+                            <TextBlock Text="📊 LOGS"
+                                      FontWeight="Bold"
+                                      FontSize="14"
+                                      Foreground="{StaticResource PrimaryText}"/>
+                        </Button>
+
                         <Button x:Name="SwarmButton"
                                 Margin="8,0,0,0"
                                 Click="SwarmButton_Click">
@@ -491,7 +501,7 @@
                         Background="{StaticResource PanelBackground}">
                     <!-- Always present. It gains a SWARM tab in swarm mode, so MISSION,
                          DATA, MESSAGES and the rest stay available in both modes. -->
-                    <views:FlightPanelView DataContext="{Binding Telemetry}"/>
+                    <views:FlightPanelView x:Name="FlightPanel" DataContext="{Binding Telemetry}"/>
                 </Border>
 
                 <!-- Drag to resize the flight panel / map split -->
@@ -592,6 +602,12 @@
                     <views:SetupView Grid.Row="1" DataContext="{Binding Setup}"/>
                 </Grid>
             </Border>
+
+            <!-- Floating flight advisor. Sits over the main content rather than in
+                 a tab so it can be consulted from any screen; below the toasts so
+                 notifications are never covered. -->
+            <views:AssistantPopupView Grid.Row="2" Grid.RowSpan="2"
+                                      DataContext="{Binding Advisor}" Panel.ZIndex="150"/>
 
             <!-- Toast notifications overlay (click-through except over a toast) -->
             <views:ToastHost Grid.Row="0" Grid.RowSpan="4"

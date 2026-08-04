@@ -43,6 +43,8 @@ public class MainViewModel : ViewModelBase, IDisposable
     public TelemetryViewModel Telemetry { get; }
     public AlertsViewModel Alerts { get; }
     public PreflightViewModel Preflight { get; }
+    public AdvisorViewModel Advisor { get; }
+    public LogsViewModel Logs { get; } = new();
     public MessagesViewModel Messages { get; }
     public RcChannelsViewModel RcChannels { get; }
     public ActionsViewModel? Actions { get; private set; }
@@ -66,12 +68,51 @@ public class MainViewModel : ViewModelBase, IDisposable
         get => _isSwarmMode;
         set
         {
-            if (SetProperty(ref _isSwarmMode, value))
-                OnPropertyChanged(nameof(IsSingleVehicleMode));
+            if (!SetProperty(ref _isSwarmMode, value)) return;
+            OnPropertyChanged(nameof(IsSingleVehicleMode));
+            OnPropertyChanged(nameof(ShowSwarmTab));
+            OnPropertyChanged(nameof(ShowActionsTab));
         }
     }
 
     public bool IsSingleVehicleMode => !_isSwarmMode;
+
+    private bool _isLogReviewMode;
+    /// <summary>
+    /// Post-flight review takes over the side panel entirely and strips the map
+    /// back to the recorded path — live tabs and the mission would just be noise
+    /// when the question is what already happened.
+    /// </summary>
+    public bool IsLogReviewMode
+    {
+        get => _isLogReviewMode;
+        set
+        {
+            if (!SetProperty(ref _isLogReviewMode, value)) return;
+            OnPropertyChanged(nameof(IsNotLogReviewMode));
+            OnPropertyChanged(nameof(ShowSwarmTab));
+            OnPropertyChanged(nameof(ShowActionsTab));
+            OnPropertyChanged(nameof(AttitudeRowHeight));
+
+            // Leaving review drops the loaded flight, so the map and the advisor
+            // both go back to the live aircraft rather than lingering on old data.
+            if (!value) Logs.Close();
+        }
+    }
+
+    public bool IsNotLogReviewMode => !_isLogReviewMode;
+
+    // Log review outranks the live modes: the panel belongs entirely to the
+    // recorded flight, so no live tab should remain reachable behind it.
+    public bool ShowSwarmTab => _isSwarmMode && !_isLogReviewMode;
+    public bool ShowActionsTab => !_isSwarmMode && !_isLogReviewMode;
+
+    /// <summary>
+    /// The attitude display is live-only, so review reclaims its space for the log
+    /// instead of leaving a frozen horizon above it.
+    /// </summary>
+    public System.Windows.GridLength AttitudeRowHeight =>
+        _isLogReviewMode ? new System.Windows.GridLength(0) : new System.Windows.GridLength(320);
 
     // ═══════════════════════════════════════════════════════════════
     // Constructor
@@ -85,6 +126,16 @@ public class MainViewModel : ViewModelBase, IDisposable
         Telemetry = new TelemetryViewModel();
         Alerts = new AlertsViewModel();
         Preflight = new PreflightViewModel();
+
+        // The assistant is optional: with no key in appsettings.json the advisor
+        // still answers from its built-in rules, offline and instantly.
+        var assistantOptions = GCS.Core.AppConfig.Load().Assistant;
+        Advisor = new AdvisorViewModel(
+            new GCS.Core.Advisor.Ai.AssistantService(
+                assistantOptions.IsConfigured
+                    ? new GCS.Core.Advisor.Ai.OpenAiCompatibleChatClient(assistantOptions)
+                    : null),
+            assistantOptions);
         Messages = new MessagesViewModel();
         RcChannels = new RcChannelsViewModel();
 
@@ -281,6 +332,25 @@ public class MainViewModel : ViewModelBase, IDisposable
         Parameters.UpdateConnectionState(true);
         Setup.UpdateConnectionState(true);
         _ = Failsafe.RefreshFailsafeParams();
+
+        // ArduPilot streams none of the health messages by default, so vibration,
+        // EKF, motor-output and power analysis stay blank until they are asked for.
+        // Fire-and-forget: an autopilot that does not support a message simply
+        // never sends it, and the advisor reports absent data as unmonitored.
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // Let the heartbeat settle so the target system id is known.
+                await Task.Delay(1500);
+                var backend = _session?.Backend;
+                if (backend != null) await backend.RequestHealthStreamsAsync();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[MainVM] Health stream request failed: {ex.Message}");
+            }
+        });
     }
 
     private async void OnDisconnectRequested()
@@ -295,6 +365,9 @@ public class MainViewModel : ViewModelBase, IDisposable
             Debug.WriteLine($"[MainVM] Disconnect error: {ex.Message}");
         }
         Connection.SetDisconnected();
+        // Otherwise the advisor keeps displaying its last verdict — including
+        // "SAFE TO FLY" — against an aircraft that is no longer talking to us.
+        Advisor.Reset();
         Notifier.Info("Disconnected");
     }
 
@@ -445,6 +518,9 @@ public class MainViewModel : ViewModelBase, IDisposable
 
         Telemetry.UpdateState(state);
         Actions?.UpdateFromVehicleState(state);
+        // Same state the HUD shows, so the advisor always describes the aircraft
+        // the operator is looking at rather than a merged multi-vehicle blend.
+        Advisor.UpdateFromVehicleState(state);
 
         bool isConnected = state.FlightMode.HasValue || state.Position != null || state.Attitude != null;
         Preflight.UpdateConnectionState(isConnected);

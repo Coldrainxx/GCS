@@ -42,6 +42,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
     private const byte GcsSysId = 255;
     private const byte GcsCompId = 190; // MAV_COMP_ID_MISSIONPLANNER
     private const ushort MAV_CMD_COMPONENT_ARM_DISARM = 400;
+    private const ushort MAV_CMD_SET_MESSAGE_INTERVAL = 511;
 
     // ═══════════════════════════════════════════════════════════════
     // Events - Telemetry
@@ -56,6 +57,13 @@ public sealed class MavlinkBackend : IMavlinkBackend
     public event Action<byte, BatteryState>? BatteryReceived;
     public event Action<RcChannelsData>? RcChannelsReceived;
     public event Action<ServoOutputData>? ServoOutputReceived;
+
+    // Health telemetry, streamed only after RequestHealthStreamsAsync.
+    public event Action<byte, VibrationState>? VibrationReceived;
+    public event Action<byte, EkfStatusState>? EkfStatusReceived;
+    public event Action<byte, BatteryStatusState>? BatteryStatusReceived;
+    public event Action<byte, PowerStatusState>? PowerStatusReceived;
+    public event Action<byte, EscTelemetryState>? EscTelemetryReceived;
     public event Action<MagCalProgressData>? MagCalProgressReceived;
     public event Action<MagCalReportData>? MagCalReportReceived;
     public event Action<ReadOnlyMemory<byte>>? RawFrameReceived;
@@ -159,7 +167,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
 
     private IMavlinkMessageHandler[] CreateHandlers()
     {
-        return new IMavlinkMessageHandler[]
+        var handlers = new List<IMavlinkMessageHandler>
         {
             // Telemetry handlers
             new HeartbeatHandler(_connection, s =>
@@ -179,6 +187,12 @@ public sealed class MavlinkBackend : IMavlinkBackend
             new MagCalReportHandler(s => MagCalReportReceived?.Invoke(s)),
             new MissionRequestHandler(seq => MissionRequestReceived?.Invoke(seq)),
             new GpsRawIntHandler((sys, s) => GpsStateReceived?.Invoke(sys, s)),
+
+            // Health telemetry (streamed only after RequestHealthStreamsAsync).
+            new VibrationHandler((sys, s) => VibrationReceived?.Invoke(sys, s)),
+            new EkfStatusHandler((sys, s) => EkfStatusReceived?.Invoke(sys, s)),
+            new BatteryStatusHandler((sys, s) => BatteryStatusReceived?.Invoke(sys, s)),
+            new PowerStatusHandler((sys, s) => PowerStatusReceived?.Invoke(sys, s)),
             // Message handlers
             new StatustextHandler(s => AutopilotMessageReceived?.Invoke(s)),
             
@@ -194,6 +208,24 @@ public sealed class MavlinkBackend : IMavlinkBackend
             // Parameter handler
             new ParamValueHandler((sys, id, val) => ParameterReceived?.Invoke(sys, id, val)),
         };
+
+        // Three messages, four ESCs each, merged into one array before publishing
+        // so consumers see the whole set rather than blocks.
+        handlers.AddRange(EscTelemetryHandler.All(OnEscBlock));
+
+        return handlers.ToArray();
+    }
+
+    private readonly EscReading[] _escReadings = new EscReading[12];
+
+    private void OnEscBlock(byte systemId, int blockIndex, EscReading[] readings)
+    {
+        int offset = blockIndex * 4;
+        for (int i = 0; i < readings.Length && offset + i < _escReadings.Length; i++)
+            _escReadings[offset + i] = readings[i];
+
+        EscTelemetryReceived?.Invoke(systemId,
+            new EscTelemetryState((EscReading[])_escReadings.Clone(), DateTime.UtcNow));
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -332,6 +364,55 @@ public sealed class MavlinkBackend : IMavlinkBackend
             p5: param5, p6: param6, p7: param7);
 
         await SendPacketAsync(packet, ct);
+    }
+
+    /// <summary>
+    /// Ask the autopilot to stream the health messages.
+    ///
+    /// ArduPilot sends none of these by default, which is why vibration, EKF, motor
+    /// output and power analysis had nothing to work with. Requested at 1-2 Hz
+    /// rather than the HUD's rate: these drive thresholds and trends, and a
+    /// 57600-baud radio is already carrying attitude and VFR_HUD at ~10 Hz.
+    ///
+    /// Failures are ignored on purpose — an autopilot that does not support a
+    /// message simply never sends it, and the health rules already report absent
+    /// data as unmonitored.
+    /// </summary>
+    public async Task RequestHealthStreamsAsync(byte targetSystem = 0, CancellationToken ct = default)
+    {
+        // (message id, interval in microseconds)
+        var wanted = new (uint Id, int IntervalUs)[]
+        {
+            (241, 500_000),    // VIBRATION            2 Hz
+            (193, 500_000),    // EKF_STATUS_REPORT    2 Hz
+            (36,  500_000),    // SERVO_OUTPUT_RAW     2 Hz — motor balance
+            (147, 1_000_000),  // BATTERY_STATUS       1 Hz
+            (125, 1_000_000),  // POWER_STATUS         1 Hz
+            (Messages.EscTelemetryHandler.Block1To4,  1_000_000),  // 1 Hz
+            (Messages.EscTelemetryHandler.Block5To8,  1_000_000),
+            (Messages.EscTelemetryHandler.Block9To12, 1_000_000),
+        };
+
+        foreach (var (id, interval) in wanted)
+        {
+            try
+            {
+                await SendCommandLongAsync(
+                    MAV_CMD_SET_MESSAGE_INTERVAL,
+                    param1: id,
+                    param2: interval,
+                    targetSystem: targetSystem,
+                    ct: ct);
+
+                // Spaced out so a burst of eight commands cannot swamp a slow link.
+                await Task.Delay(60, ct);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[Backend] Stream request for {id} failed: {ex.Message}");
+            }
+        }
     }
 
     public async Task SendSetModeAsync(

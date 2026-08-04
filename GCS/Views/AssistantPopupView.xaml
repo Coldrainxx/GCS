@@ -1,0 +1,585 @@
+<UserControl x:Class="GCS.Views.AssistantPopupView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="500" d:DesignWidth="380"
+             HorizontalAlignment="Right" VerticalAlignment="Bottom"
+             Background="Transparent">
+
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="PanelBg" Color="#161B22"/>
+        <SolidColorBrush x:Key="HeaderBg" Color="#1C2128"/>
+        <SolidColorBrush x:Key="InputBg" Color="#0D1117"/>
+        <SolidColorBrush x:Key="BorderCol" Color="#2D333D"/>
+        <SolidColorBrush x:Key="PrimaryText" Color="#E6EDF3"/>
+        <SolidColorBrush x:Key="SecondaryText" Color="#8B949E"/>
+        <SolidColorBrush x:Key="MutedText" Color="#5A636D"/>
+        <SolidColorBrush x:Key="Accent" Color="#1F6FEB"/>
+        <SolidColorBrush x:Key="AccentGreenBrush" Color="#3FB950"/>
+
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!-- Thumbs used purely as drag surfaces; the default template draws a button. -->
+        <Style x:Key="InvisibleThumb" TargetType="Thumb">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Rectangle Fill="Transparent"/>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Resize grip: two subtle chevron strokes in the corner. -->
+        <Style x:Key="ResizeThumb" TargetType="Thumb" BasedOn="{StaticResource InvisibleThumb}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Grid Background="Transparent">
+                            <Path Stroke="{StaticResource MutedText}" StrokeThickness="1.4"
+                                  Data="M 3,10 L 3,3 L 10,3   M 3,15 L 3,3 L 15,3"
+                                  SnapsToDevicePixels="True"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Round launcher, styled so it keeps its shape on hover/press. -->
+        <Style x:Key="LauncherButton" TargetType="Button">
+            <Setter Property="Width" Value="52"/>
+            <Setter Property="Height" Value="52"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Ellipse x:Name="Bg" Fill="{StaticResource Accent}"/>
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Fill" Value="#388BFD"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Fill" Value="#1A5FCC"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- The stock Button template discards Background on hover/press and falls
+             back to the system chrome, which flashes near-white on a dark panel.
+             These define every visual state explicitly. -->
+        <Style x:Key="FlatButton" TargetType="Button">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="14,6"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Opacity" Value="0.85"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Opacity" Value="0.65"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <!-- Dimmed rather than greyed out, so a disabled Send
+                                     still reads as the same button. -->
+                                <Setter TargetName="Bg" Property="Opacity" Value="0.35"/>
+                                <Setter Property="Foreground" Value="#8B949E"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PrimaryButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+            <Setter Property="Background" Value="{StaticResource Accent}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <Style x:Key="SecondaryButton" TargetType="Button" BasedOn="{StaticResource FlatButton}">
+            <Setter Property="Background" Value="#30363D"/>
+            <Setter Property="Foreground" Value="{StaticResource PrimaryText}"/>
+        </Style>
+
+        <Style x:Key="IconButton" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource SecondaryText}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="3"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#30363D"/>
+                                <Setter Property="Foreground" Value="{StaticResource PrimaryText}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#22272E"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Foreground" Value="#4A525B"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <!-- The map is a WebView2, i.e. a native child HWND, and WPF cannot render on
+         top of one (the "airspace" limitation). Hosting the assistant in a Popup
+         gives it its own top-level window, which does sit above the map. The
+         zero-size Anchor below is what the Popup positions itself against. -->
+    <Grid>
+        <Border x:Name="Anchor" Width="0" Height="0"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom"/>
+
+        <!-- Focusable="True" is required: without it the popup's window is created
+             with WS_EX_NOACTIVATE and the text boxes inside can never receive
+             keyboard input. -->
+        <Popup x:Name="HostPopup"
+               PlacementTarget="{Binding ElementName=Anchor}"
+               Placement="Custom"
+               AllowsTransparency="True"
+               StaysOpen="True"
+               PopupAnimation="None"
+               Focusable="True">
+        <Grid Margin="24">
+        <!-- ── Chat panel ──────────────────────────────────────────── -->
+        <Border x:Name="ChatPanel"
+                Width="360" Height="420"
+                MinWidth="300" MinHeight="260"
+                Background="{StaticResource PanelBg}"
+                BorderBrush="{StaticResource BorderCol}"
+                BorderThickness="1" CornerRadius="8"
+                Visibility="{Binding IsChatOpen, Converter={StaticResource BoolToVis}}">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="18" ShadowDepth="3" Opacity="0.55" Color="Black"/>
+            </Border.Effect>
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Resize grip. Top-left because the panel is pinned by its
+                     bottom-right corner, so this edge is the one that moves.
+                     Row 0 with a high ZIndex keeps it above the header. -->
+                <Thumb x:Name="ResizeGrip" Grid.Row="0"
+                       Width="18" Height="18" Margin="2,2,0,0"
+                       HorizontalAlignment="Left" VerticalAlignment="Top"
+                       Panel.ZIndex="10"
+                       Cursor="SizeNWSE"
+                       Style="{StaticResource ResizeThumb}"
+                       DragDelta="ResizeGrip_DragDelta"
+                       ToolTip="Drag to resize"/>
+
+                <!-- Header. Left padding clears the resize grip. -->
+                <Border Grid.Row="0" Background="{StaticResource HeaderBg}"
+                        CornerRadius="8,8,0,0" Padding="24,9,12,9">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Invisible drag surface across the whole header. Declared
+                             first so the Clear/close buttons sit above it and stay
+                             clickable. -->
+                        <Thumb x:Name="DragThumb"
+                               Grid.Column="0" Grid.ColumnSpan="4"
+                               Cursor="SizeAll"
+                               Style="{StaticResource InvisibleThumb}"
+                               DragDelta="DragThumb_DragDelta"
+                               ToolTip="Drag to move"/>
+
+                        <StackPanel Grid.Column="0" IsHitTestVisible="False">
+                            <TextBlock Text="FLIGHT ADVISOR"
+                                       Foreground="{StaticResource PrimaryText}"
+                                       FontSize="11" FontWeight="Bold"/>
+                            <TextBlock Foreground="{StaticResource SecondaryText}"
+                                       FontSize="9" Margin="0,2,0,0">
+                                <Run Text="{Binding VerdictText, Mode=OneWay}"/>
+                                <Run Text="·" Foreground="{StaticResource MutedText}"/>
+                                <Run Text="{Binding ProviderText, Mode=OneWay}"
+                                     Foreground="{StaticResource MutedText}"/>
+                            </TextBlock>
+                        </StackPanel>
+
+                        <Button Grid.Column="1" Content="Clear"
+                                Style="{StaticResource IconButton}"
+                                Command="{Binding ClearChatCommand}"
+                                ToolTip="Clear the conversation"
+                                Visibility="{Binding IsChatViewVisible, Converter={StaticResource BoolToVis}}"/>
+
+                        <Button Grid.Column="2" Content="⚙"
+                                Style="{StaticResource IconButton}"
+                                Command="{Binding OpenSettingsCommand}"
+                                FontSize="14" Margin="2,0,0,0"
+                                ToolTip="Connect an AI model"
+                                Visibility="{Binding IsChatViewVisible, Converter={StaticResource BoolToVis}}"/>
+
+                        <Button Grid.Column="3" Content="✕"
+                                Style="{StaticResource IconButton}"
+                                Command="{Binding CloseChatCommand}"
+                                Margin="4,0,0,0" ToolTip="Close"/>
+                    </Grid>
+                </Border>
+
+                <!-- Current headline, so the panel is useful before you type.
+                     Swapped for the log banner while a recorded flight is under
+                     review, so it is never ambiguous which aircraft state the
+                     answers describe. -->
+                <Border Grid.Row="1" Background="#12171D" Padding="12,7"
+                        BorderBrush="{StaticResource BorderCol}" BorderThickness="0,0,0,1">
+                    <Grid>
+                        <TextBlock Text="{Binding Headline}"
+                                   Foreground="{StaticResource SecondaryText}"
+                                   FontSize="10" TextWrapping="Wrap">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasLogContext}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <Grid Visibility="{Binding HasLogContext, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="{Binding LogContextText}"
+                                       Foreground="#58A6FF" FontSize="10"
+                                       TextTrimming="CharacterEllipsis" Margin="0,0,54,0"/>
+                            <Button Content="Live" Command="{Binding ClearLogContextCommand}"
+                                    Style="{StaticResource IconButton}"
+                                    HorizontalAlignment="Right" FontSize="9"
+                                    ToolTip="Stop reviewing the log and answer about the live aircraft"/>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <!-- ── Settings face ───────────────────────────────── -->
+                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="12,10"
+                              Visibility="{Binding IsSettingsOpen, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <TextBlock Text="AI PROVIDER"
+                                   Foreground="{StaticResource SecondaryText}"
+                                   FontSize="10" FontWeight="Bold" Margin="0,0,0,4"/>
+
+                        <!-- Explicit ItemTemplate rather than DisplayMemberPath: the
+                             latter was being bypassed, leaving the record's ToString
+                             in the box. -->
+                        <ComboBox ItemsSource="{Binding Providers}"
+                                  SelectedItem="{Binding SelectedProvider}"
+                                  FontSize="11" Padding="6,4">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding DisplayName}"/>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+
+                        <TextBlock Text="{Binding SelectedProvider.Summary}"
+                                   Foreground="{StaticResource MutedText}"
+                                   FontSize="9" TextWrapping="Wrap" Margin="0,6,0,0"/>
+
+                        <!-- How to get a key -->
+                        <Border Background="#12171D" CornerRadius="4" Padding="9,7" Margin="0,9,0,0">
+                            <StackPanel>
+                                <TextBlock Text="HOW TO GET A KEY"
+                                           Foreground="{StaticResource SecondaryText}"
+                                           FontSize="9" FontWeight="Bold" Margin="0,0,0,5"/>
+                                <TextBlock Text="{Binding InstructionText}"
+                                           Foreground="{StaticResource PrimaryText}"
+                                           FontSize="10" TextWrapping="Wrap" LineHeight="16"/>
+
+                                <TextBlock Margin="0,7,0,0"
+                                           Visibility="{Binding HasKeyUrl, Converter={StaticResource BoolToVis}}">
+                                    <Hyperlink NavigateUri="{Binding KeyUrl}"
+                                               RequestNavigate="Hyperlink_RequestNavigate"
+                                               Foreground="#58A6FF">
+                                        <TextBlock Text="{Binding KeyUrl}" FontSize="10"/>
+                                    </Hyperlink>
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Key -->
+                        <StackPanel Margin="0,10,0,0"
+                                    Visibility="{Binding NeedsKey, Converter={StaticResource BoolToVis}}">
+                            <Grid Margin="0,0,0,4">
+                                <TextBlock Text="API KEY"
+                                           Foreground="{StaticResource SecondaryText}"
+                                           FontSize="10" FontWeight="Bold"/>
+                                <CheckBox x:Name="RevealKeyCheck" Content="Show"
+                                          HorizontalAlignment="Right"
+                                          Foreground="{StaticResource MutedText}" FontSize="9"
+                                          Checked="RevealKey_Changed" Unchecked="RevealKey_Changed"/>
+                            </Grid>
+
+                            <!-- Masked by default; the TextBox below mirrors it when revealed. -->
+                            <PasswordBox x:Name="KeyPasswordBox"
+                                         Background="{StaticResource InputBg}"
+                                         Foreground="{StaticResource PrimaryText}"
+                                         CaretBrush="{StaticResource PrimaryText}"
+                                         BorderBrush="{StaticResource BorderCol}" BorderThickness="1"
+                                         Padding="7,5" FontSize="11"
+                                         PasswordChanged="KeyPasswordBox_PasswordChanged"/>
+
+                            <TextBox x:Name="KeyTextBox"
+                                     Text="{Binding ApiKey, UpdateSourceTrigger=PropertyChanged}"
+                                     Background="{StaticResource InputBg}"
+                                     Foreground="{StaticResource PrimaryText}"
+                                     CaretBrush="{StaticResource PrimaryText}"
+                                     BorderBrush="{StaticResource BorderCol}" BorderThickness="1"
+                                     Padding="7,5" FontSize="11"
+                                     Visibility="Collapsed"/>
+                        </StackPanel>
+
+                        <!-- Custom endpoint -->
+                        <StackPanel Margin="0,10,0,0"
+                                    Visibility="{Binding NeedsBaseUrl, Converter={StaticResource BoolToVis}}">
+                            <TextBlock Text="BASE URL"
+                                       Foreground="{StaticResource SecondaryText}"
+                                       FontSize="10" FontWeight="Bold" Margin="0,0,0,4"/>
+                            <TextBox Text="{Binding CustomBaseUrl, UpdateSourceTrigger=PropertyChanged}"
+                                     Background="{StaticResource InputBg}"
+                                     Foreground="{StaticResource PrimaryText}"
+                                     CaretBrush="{StaticResource PrimaryText}"
+                                     BorderBrush="{StaticResource BorderCol}" BorderThickness="1"
+                                     Padding="7,5" FontSize="11"/>
+                        </StackPanel>
+
+                        <!-- Model -->
+                        <StackPanel Margin="0,10,0,0"
+                                    Visibility="{Binding NeedsKey, Converter={StaticResource BoolToVis}}">
+                            <Grid Margin="0,0,0,4">
+                                <TextBlock Text="MODEL"
+                                           Foreground="{StaticResource SecondaryText}"
+                                           FontSize="10" FontWeight="Bold"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button Content="Load models"
+                                            Command="{Binding LoadModelsCommand}"
+                                            Style="{StaticResource IconButton}"
+                                            FontSize="9"
+                                            ToolTip="Ask the provider which models this key can use"/>
+                                    <Button Content="Find one that works"
+                                            Command="{Binding AutoDetectModelCommand}"
+                                            Style="{StaticResource IconButton}"
+                                            FontSize="9" Margin="4,0,0,0"
+                                            Foreground="#58A6FF"
+                                            ToolTip="Try each model until one responds on this key"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Editable: the fetched list is authoritative, but a
+                                 provider may offer a model it does not advertise. -->
+                            <ComboBox IsEditable="True"
+                                      Text="{Binding CustomModel, UpdateSourceTrigger=PropertyChanged}"
+                                      ItemsSource="{Binding AvailableModels}"
+                                      FontSize="11" Padding="6,4"/>
+
+                            <TextBlock Text="{Binding EffectiveModelText}"
+                                       Foreground="{StaticResource SecondaryText}"
+                                       FontSize="9" Margin="0,4,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <TextBlock Foreground="{StaticResource MutedText}"
+                                   FontSize="9" TextWrapping="Wrap" Margin="0,12,0,0"
+                                   Text="Stored in appsettings.json next to the app, which is gitignored. Use your own key — a key shipped inside the app can be extracted and its rate limit shared."/>
+
+                        <TextBlock Text="{Binding SettingsStatus}"
+                                   FontSize="10" TextWrapping="Wrap" Margin="0,10,0,0">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{StaticResource AccentGreenBrush}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SettingsStatusIsError}" Value="True">
+                                            <Setter Property="Foreground" Value="#F85149"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding SettingsStatus}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Transcript -->
+                <ScrollViewer x:Name="TranscriptScroll" Grid.Row="2"
+                              VerticalScrollBarVisibility="Auto" Padding="12,10"
+                              Visibility="{Binding IsChatViewVisible, Converter={StaticResource BoolToVis}}">
+                    <StackPanel>
+                        <!-- Shown until the operator asks something -->
+                        <TextBlock Foreground="{StaticResource MutedText}"
+                                   FontSize="10" TextWrapping="Wrap"
+                                   Text="Ask about health, battery, GPS, link, position, mode, or what is not monitored.">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Conversation.Count}" Value="0">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+
+                        <ItemsControl ItemsSource="{Binding Conversation}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border CornerRadius="6" Padding="9,6" Margin="0,0,0,7"
+                                            MaxWidth="290">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <!-- Advisor: left, neutral -->
+                                                <Setter Property="Background" Value="#1C2128"/>
+                                                <Setter Property="HorizontalAlignment" Value="Left"/>
+                                                <Style.Triggers>
+                                                    <!-- Operator: right, accented -->
+                                                    <DataTrigger Binding="{Binding IsFromOperator}" Value="True">
+                                                        <Setter Property="Background" Value="#1F6FEB"/>
+                                                        <Setter Property="HorizontalAlignment" Value="Right"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding Text}"
+                                                       Foreground="{StaticResource PrimaryText}"
+                                                       FontSize="11" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{Binding Time}"
+                                                       Foreground="{StaticResource MutedText}"
+                                                       FontSize="8" Margin="0,3,0,0"
+                                                       HorizontalAlignment="Right"/>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Settings actions -->
+                <Border Grid.Row="3" Background="{StaticResource HeaderBg}"
+                        CornerRadius="0,0,8,8" Padding="10,8"
+                        Visibility="{Binding IsSettingsOpen, Converter={StaticResource BoolToVis}}">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="Back" Command="{Binding CloseSettingsCommand}"
+                                Style="{StaticResource IconButton}" Padding="12,6"/>
+                        <Button Content="Test" Command="{Binding TestConnectionCommand}"
+                                Style="{StaticResource SecondaryButton}" Margin="6,0,0,0"/>
+                        <Button Content="Save" Command="{Binding SaveSettingsCommand}"
+                                Style="{StaticResource PrimaryButton}" Margin="6,0,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Composer -->
+                <Border Grid.Row="3" Background="{StaticResource HeaderBg}"
+                        CornerRadius="0,0,8,8" Padding="10,8"
+                        Visibility="{Binding IsChatViewVisible, Converter={StaticResource BoolToVis}}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Only meaningful on the model path, which can take seconds -->
+                        <TextBlock Grid.Row="0" Grid.ColumnSpan="2"
+                                   Text="Thinking…"
+                                   Foreground="{StaticResource MutedText}"
+                                   FontSize="9" Margin="2,0,0,5"
+                                   Visibility="{Binding IsThinking, Converter={StaticResource BoolToVis}}"/>
+
+                        <TextBox x:Name="QuestionBox" Grid.Row="1" Grid.Column="0"
+                                 Text="{Binding Question, UpdateSourceTrigger=PropertyChanged}"
+                                 Background="{StaticResource InputBg}"
+                                 Foreground="{StaticResource PrimaryText}"
+                                 CaretBrush="{StaticResource PrimaryText}"
+                                 BorderBrush="{StaticResource BorderCol}" BorderThickness="1"
+                                 Padding="8,6" FontSize="11" VerticalContentAlignment="Center">
+                            <TextBox.InputBindings>
+                                <KeyBinding Key="Return" Command="{Binding AskCommand}"/>
+                                <KeyBinding Key="Esc" Command="{Binding CloseChatCommand}"/>
+                            </TextBox.InputBindings>
+                        </TextBox>
+
+                        <Button Grid.Row="1" Grid.Column="1" Content="Send"
+                                Command="{Binding AskCommand}"
+                                Style="{StaticResource PrimaryButton}"
+                                Margin="7,0,0,0"/>
+                    </Grid>
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- ── Launcher ────────────────────────────────────────────── -->
+        <Grid HorizontalAlignment="Right" VerticalAlignment="Bottom"
+              Visibility="{Binding IsChatClosed, Converter={StaticResource BoolToVis}}">
+            <Button Style="{StaticResource LauncherButton}"
+                    Command="{Binding ToggleChatCommand}"
+                    ToolTip="Ask the flight advisor">
+                <Button.Effect>
+                    <DropShadowEffect BlurRadius="14" ShadowDepth="2" Opacity="0.5" Color="Black"/>
+                </Button.Effect>
+                <TextBlock Text="&#xE8BD;" FontFamily="Segoe MDL2 Assets"
+                           FontSize="21" Foreground="White"/>
+            </Button>
+
+            <!-- Unread dot: the advisor said something while this was closed -->
+            <Ellipse Width="13" Height="13" Fill="#F85149"
+                     Stroke="#161B22" StrokeThickness="2"
+                     HorizontalAlignment="Right" VerticalAlignment="Top"
+                     Margin="0,1,1,0"
+                     Visibility="{Binding HasUnread, Converter={StaticResource BoolToVis}}"/>
+        </Grid>
+        </Grid>
+        </Popup>
+    </Grid>
+</UserControl>

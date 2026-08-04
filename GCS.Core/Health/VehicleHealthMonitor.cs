@@ -65,10 +65,11 @@ public sealed class VehicleHealthMonitor :
         var now = DateTime.UtcNow;
         var vs = _stateStore.Current;
 
+        // Not Connection.LastHeartbeatUtc: that is only republished on transitions,
+        // so it aged past the timeout a few seconds after connecting and left the
+        // link indicator stuck red while telemetry was streaming fine.
         bool linkAlive =
-            vs.Connection != null &&
-            (now - vs.Connection.LastHeartbeatUtc)
-                <= _policy.HeartbeatTimeout;
+            TelemetryFreshness.IsLinkAlive(vs, now, _policy.HeartbeatTimeout);
 
         bool attitudeFresh =
             vs.Attitude != null &&

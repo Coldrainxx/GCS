@@ -90,7 +90,7 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="320"/>
+            <RowDefinition Height="{Binding DataContext.AttitudeRowHeight, RelativeSource={RelativeSource AncestorType=Window}}"/>
             <!-- Artificial Horizon -->
             <RowDefinition/>
             <!-- Tabbed Content -->
@@ -184,7 +184,7 @@
                  formation and group commands sit alongside MISSION/DATA/etc.
                  and you never have to leave swarm mode to plan or inspect. -->
             <TabItem x:Name="SwarmTab" Header="SWARM" Style="{StaticResource ModernTabItem}"
-                     Visibility="{Binding DataContext.IsSwarmMode,
+                     Visibility="{Binding DataContext.ShowSwarmTab,
                                   RelativeSource={RelativeSource AncestorType=Window},
                                   Converter={StaticResource BoolToVisibilityConverter}}">
                 <views:SwarmView DataContext="{Binding DataContext.Swarm,
@@ -192,28 +192,48 @@
             </TabItem>
 
             <!-- TAB 1: DATA (the default tab — see FlightPanelView.OnLoaded) -->
-            <TabItem x:Name="DataTab" Header="DATA" Style="{StaticResource ModernTabItem}">
+            <TabItem x:Name="DataTab" Header="DATA" Style="{StaticResource ModernTabItem}" Visibility="{Binding DataContext.IsNotLogReviewMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <views:DataTabView DataContext="{Binding}"/>
                 </ScrollViewer>
             </TabItem>
 
             <!-- TAB 2: MESSAGES -->
-            <TabItem Header="MESSAGES" Style="{StaticResource ModernTabItem}">
+            <TabItem Header="MESSAGES" Style="{StaticResource ModernTabItem}" Visibility="{Binding DataContext.IsNotLogReviewMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <views:MessagesTabView DataContext="{Binding DataContext.Messages, RelativeSource={RelativeSource AncestorType=Window}}"/>
                 </ScrollViewer>
             </TabItem>
 
             <!-- TAB 3: RC CHANNELS -->
-            <TabItem Header="RC" Style="{StaticResource ModernTabItem}">
+            <TabItem Header="RC" Style="{StaticResource ModernTabItem}" Visibility="{Binding DataContext.IsNotLogReviewMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <views:RcChannelsTabView DataContext="{Binding DataContext.RcChannels, RelativeSource={RelativeSource AncestorType=Window}}"/>
                 </ScrollViewer>
             </TabItem>
 
+            <!-- TAB: LOG — post-flight review. Lives here rather than in a
+                 full-window panel so the flight path can be drawn on the real map
+                 alongside it, the way swarm mode works. -->
+            <TabItem x:Name="LogTab" Header="LOG" Style="{StaticResource ModernTabItem}"
+                     Visibility="{Binding DataContext.IsLogReviewMode,
+                                  RelativeSource={RelativeSource AncestorType=Window},
+                                  Converter={StaticResource BoolToVisibilityConverter}}">
+                <views:LogsView DataContext="{Binding DataContext.Logs,
+                                              RelativeSource={RelativeSource AncestorType=Window}}"/>
+            </TabItem>
+
+            <!-- TAB: ADVISOR — per-subsystem health assessment. Sits next to PREARM
+                 because both answer "should I fly?", but this one keeps answering
+                 it during the flight. -->
+            <TabItem Header="ADVISOR" Style="{StaticResource ModernTabItem}" Visibility="{Binding DataContext.IsNotLogReviewMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <views:AdvisorTabView DataContext="{Binding DataContext.Advisor, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                </ScrollViewer>
+            </TabItem>
+
             <!-- TAB 4: PREARM -->
-            <TabItem Header="PREARM" Style="{StaticResource ModernTabItem}">
+            <TabItem Header="PREARM" Style="{StaticResource ModernTabItem}" Visibility="{Binding DataContext.IsNotLogReviewMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <views:PrearmTabView DataContext="{Binding DataContext.Preflight, RelativeSource={RelativeSource AncestorType=Window}}"/>
                 </ScrollViewer>
@@ -223,7 +243,7 @@
                  drives the whole fleet, so per-vehicle arm/mode buttons here would
                  be an ambiguous second place to command one drone. -->
             <TabItem x:Name="ActionsTab" Header="ACTIONS" Style="{StaticResource ModernTabItem}"
-                     Visibility="{Binding DataContext.IsSingleVehicleMode,
+                     Visibility="{Binding DataContext.ShowActionsTab,
                                   RelativeSource={RelativeSource AncestorType=Window},
                                   Converter={StaticResource BoolToVisibilityConverter}}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -232,13 +252,13 @@
             </TabItem>
 
             <!-- TAB 7: 3D MODEL -->
-            <TabItem Header="3D MODEL" Style="{StaticResource ModernTabItem}">
+            <TabItem Header="3D MODEL" Style="{StaticResource ModernTabItem}" Visibility="{Binding DataContext.IsNotLogReviewMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}">
                 <views:Model3DTabView Roll="{Binding Roll}"
                                       Pitch="{Binding Pitch}"
                                       Yaw="{Binding Yaw}"/>
             </TabItem>
             <!-- TAB: MISSION -->
-            <TabItem Header="MISSION" Style="{StaticResource ModernTabItem}">
+            <TabItem Header="MISSION" Style="{StaticResource ModernTabItem}" Visibility="{Binding DataContext.IsNotLogReviewMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <views:MissionTabView DataContext="{Binding DataContext.Mission, RelativeSource={RelativeSource AncestorType=Window}}"/>
                 </ScrollViewer>

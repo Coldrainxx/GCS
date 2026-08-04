@@ -56,7 +56,19 @@ public partial class MapView : UserControl
             _swarmTimer.Start();
 
             mainVm.PropertyChanged += OnMainViewModelPropertyChanged;
+
+            // Reviewing a log paints its path over the live map.
+            mainVm.Logs.PropertyChanged += OnLogsPropertyChanged;
         }
+    }
+
+    private void OnLogsPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(GCS.ViewModels.LogsViewModel.Summary)) return;
+
+        var summary = _mainVm?.Logs.Summary;
+        if (summary == null) ClearLogTrack();
+        else ShowLogTrack(summary.Samples);
     }
 
     private void OnSwarmTick(object? sender, EventArgs e)
@@ -82,6 +94,16 @@ public partial class MapView : UserControl
 
     private void OnMainViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(GCS.ViewModels.MainViewModel.IsLogReviewMode))
+        {
+            // Reviewing a flight strips the map to that path: mission waypoints and
+            // the live aircraft marker would compete with what is being reviewed.
+            bool review = _mainVm?.IsLogReviewMode == true;
+            ExecuteScript($"setLogReviewMode({(review ? "true" : "false")});");
+            if (!review) ClearLogTrack();
+            return;
+        }
+
         if (e.PropertyName != nameof(GCS.ViewModels.MainViewModel.IsSwarmMode)) return;
         bool on = _mainVm?.IsSwarmMode == true;
         ExecuteScript($"setSwarmMode({(on ? "true" : "false")});");
@@ -156,6 +178,17 @@ public partial class MapView : UserControl
         {
             string message = e.TryGetWebMessageAsString();
 
+            // Second line of defence. The page already ignores these while a log is
+            // under review, but editing a mission or commanding the aircraft from a
+            // screen showing a past flight is bad enough to check on both sides.
+            if (_mainVm?.IsLogReviewMode == true &&
+                (message.StartsWith("click:") ||
+                 message.StartsWith("flyto:") ||
+                 message.StartsWith("drag:")))
+            {
+                return;
+            }
+
             if (message.StartsWith("click:"))
             {
                 var coords = message.Substring(6).Split(',');
@@ -203,6 +236,7 @@ public partial class MapView : UserControl
 
             // The map starts in single-UAV mode; sync it in case we're already in swarm mode.
             if (_mainVm?.IsSwarmMode == true) ExecuteScript("setSwarmMode(true);");
+            if (_mainVm?.IsLogReviewMode == true) ExecuteScript("setLogReviewMode(true);");
 
             if (DataContext is GCS.ViewModels.TelemetryViewModel vm)
             {
@@ -337,4 +371,34 @@ public partial class MapView : UserControl
     }
 
     public void ClearSwarm() => ExecuteScript("clearSwarm();");
+
+    /// <summary>
+    /// Draw a recorded flight path on the map and frame it. Points without a valid
+    /// position are dropped — 0,0 is the "no fix" placeholder and would drag the
+    /// path into the Gulf of Guinea.
+    /// </summary>
+    public void ShowLogTrack(IEnumerable<GCS.Core.Logging.FlightSample> samples)
+    {
+        if (!_isMapInitialized || MapWebView?.CoreWebView2 == null) return;
+
+        var points = samples
+            .Where(s => s.HasPosition && (Math.Abs(s.Lat) > 0.0001 || Math.Abs(s.Lon) > 0.0001))
+            .ToList();
+
+        if (points.Count < 2) { ClearLogTrack(); return; }
+
+        var sb = new System.Text.StringBuilder("[");
+        for (int i = 0; i < points.Count; i++)
+        {
+            if (i > 0) sb.Append(',');
+            var p = points[i];
+            sb.Append(CultureInfo.InvariantCulture,
+                $"{{\"lat\":{p.Lat:F7},\"lon\":{p.Lon:F7},\"armed\":{(p.IsArmed ? "true" : "false")}}}");
+        }
+        sb.Append(']');
+
+        ExecuteScript("showLogTrack(" + sb + ");");
+    }
+
+    public void ClearLogTrack() => ExecuteScript("clearLogTrack();");
 }

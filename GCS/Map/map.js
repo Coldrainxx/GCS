@@ -10,6 +10,7 @@
     var uavMarker = null, uavArrow = null, uavEl = null;
     var hasFirstPosition = false;
     var followUAV = true, userMovedMap = false;
+    var logReviewMode = false;
     var is3D = false;
 
     var waypoints = [];        // { marker, lat, lon, type, radius }
@@ -71,7 +72,9 @@
     // Several callers update this at different rates, so letting each decide
     // for itself made it flicker.
     function refreshUavArrowVisibility() {
-        if (uavEl) uavEl.style.display = (is3D || swarmMode) ? "none" : "";
+        // Also hidden while reviewing a log: the live aircraft's marker sitting on
+        // a recorded path is confusing about which is which.
+        if (uavEl) uavEl.style.display = (is3D || swarmMode || logReviewMode) ? "none" : "";
     }
 
     // ── Basemap style ───────────────────────────────────────────────
@@ -153,6 +156,23 @@
             paint: { "circle-radius": 5, "circle-color": "rgba(0,0,0,0)",
                      "circle-stroke-color": ["get", "color"], "circle-stroke-width": 2,
                      "circle-opacity": 0.9 } });
+
+        // Recorded flight path, shown when reviewing a log. Split into armed and
+        // unarmed segments so taxiing and bench time are visually distinct from
+        // what was actually flown.
+        map.addSource("log-track", { type: "geojson", data: empty() });
+        map.addLayer({ id: "log-track-ground", type: "line", source: "log-track",
+            filter: ["==", ["get", "kind"], "ground"],
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": "#58A6FF", "line-width": 2, "line-opacity": 0.5 } });
+        map.addLayer({ id: "log-track-armed", type: "line", source: "log-track",
+            filter: ["==", ["get", "kind"], "armed"],
+            layout: { "line-cap": "round", "line-join": "round" },
+            paint: { "line-color": "#3FB950", "line-width": 3, "line-opacity": 0.95 } });
+        map.addLayer({ id: "log-track-ends", type: "circle", source: "log-track",
+            filter: ["==", ["get", "kind"], "end"],
+            paint: { "circle-radius": 6, "circle-color": ["get", "color"],
+                     "circle-stroke-color": "#0D1117", "circle-stroke-width": 2 } });
 
         addUavModelLayer();
         addSwarmModelLayer();
@@ -642,6 +662,98 @@
 
     // Swarm mode on: the map draws every vehicle. Off: it goes back to the single
     // active UAV, exactly as the app behaved before swarm support.
+    /**
+     * Draw a recorded flight path and frame it.
+     * points: [{lat, lon, armed}] in time order.
+     */
+    window.showLogTrack = function (points) {
+        if (!ready || !map.getSource("log-track")) return;
+        if (!points || points.length < 2) { window.clearLogTrack(); return; }
+
+        var features = [];
+        var current = null;
+        var currentArmed = null;
+
+        // Break the path wherever the armed state flips, so each run is drawn by
+        // the layer that matches it.
+        for (var i = 0; i < points.length; i++) {
+            var p = points[i];
+            if (p.armed !== currentArmed) {
+                if (current && current.length > 1) {
+                    features.push({ type: "Feature",
+                        properties: { kind: currentArmed ? "armed" : "ground" },
+                        geometry: { type: "LineString", coordinates: current } });
+                }
+                // Start the new run at the previous point so the line has no gap.
+                current = (i > 0) ? [[points[i - 1].lon, points[i - 1].lat]] : [];
+                currentArmed = p.armed;
+            }
+            current.push([p.lon, p.lat]);
+        }
+
+        if (current && current.length > 1) {
+            features.push({ type: "Feature",
+                properties: { kind: currentArmed ? "armed" : "ground" },
+                geometry: { type: "LineString", coordinates: current } });
+        }
+
+        var first = points[0], last = points[points.length - 1];
+        features.push({ type: "Feature", properties: { kind: "end", color: "#3FB950" },
+            geometry: { type: "Point", coordinates: [first.lon, first.lat] } });
+        features.push({ type: "Feature", properties: { kind: "end", color: "#F85149" },
+            geometry: { type: "Point", coordinates: [last.lon, last.lat] } });
+
+        map.getSource("log-track").setData({ type: "FeatureCollection", features: features });
+
+        // Frame the flight. Auto-follow would immediately pan back to the live
+        // aircraft and undo the fit.
+        followUAV = false;
+        updateFollowBtn();
+
+        var minLon = points[0].lon, maxLon = points[0].lon;
+        var minLat = points[0].lat, maxLat = points[0].lat;
+        for (var j = 1; j < points.length; j++) {
+            if (points[j].lon < minLon) minLon = points[j].lon;
+            if (points[j].lon > maxLon) maxLon = points[j].lon;
+            if (points[j].lat < minLat) minLat = points[j].lat;
+            if (points[j].lat > maxLat) maxLat = points[j].lat;
+        }
+
+        map.fitBounds([[minLon, minLat], [maxLon, maxLat]],
+            { padding: 60, duration: 800, maxZoom: 18 });
+    };
+
+    window.clearLogTrack = function () {
+        if (!ready || !map.getSource("log-track")) return;
+        map.getSource("log-track").setData(empty());
+    };
+
+    /**
+     * Log review mode: hide the mission so the recorded path is the only thing on
+     * the map. Waypoints are DOM markers rather than layers, so both have to be
+     * hidden — and the mission is only hidden, never cleared, so it comes back
+     * untouched when review ends.
+     */
+    window.setLogReviewMode = function (on) {
+        if (!ready) return;
+        logReviewMode = !!on;
+
+        // A fly-to menu left open from before would still act on the live aircraft.
+        if (logReviewMode) hideFlyMenu();
+
+        var vis = logReviewMode ? "none" : "visible";
+        ["wp-circles-fill", "wp-circles-line", "wp-path"].forEach(function (id) {
+            if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", vis);
+        });
+
+        Object.keys(waypoints).forEach(function (k) {
+            var el = waypoints[k] && waypoints[k].marker && waypoints[k].marker.getElement();
+            if (el) el.style.display = logReviewMode ? "none" : "";
+        });
+
+        refreshUavArrowVisibility();
+    };
+
     window.setSwarmMode = function (on) {
         swarmMode = !!on;
         if (!swarmMode) window.clearSwarm();
@@ -723,8 +835,18 @@
         });
 
         map.on("dragstart", function () { userMovedMap = true; followUAV = false; updateFollowBtn(); hideFlyMenu(); });
-        map.on("click", function (e) { hideFlyMenu(); postMsg("click:" + e.lngLat.lat + "," + e.lngLat.lng); });
-        map.on("contextmenu", function (e) { showFlyMenu(e.point.x, e.point.y, e.lngLat.lat, e.lngLat.lng); });
+        // Both are mission/command interactions. While reviewing a recorded flight
+        // there is nothing to command and no mission on screen to add to, so they
+        // are inert rather than silently editing a hidden mission.
+        map.on("click", function (e) {
+            hideFlyMenu();
+            if (logReviewMode) return;
+            postMsg("click:" + e.lngLat.lat + "," + e.lngLat.lng);
+        });
+        map.on("contextmenu", function (e) {
+            if (logReviewMode) return;
+            showFlyMenu(e.point.x, e.point.y, e.lngLat.lat, e.lngLat.lng);
+        });
 
         document.getElementById("followBtn").onclick = function () {
             followUAV = !followUAV; userMovedMap = !followUAV; updateFollowBtn();

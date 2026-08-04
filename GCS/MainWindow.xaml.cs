@@ -67,6 +67,11 @@ public partial class MainWindow : Window
                 SetupButton_Click(this, new RoutedEventArgs());
                 e.Handled = true;
             }
+            else if (e.Key == Key.L)
+            {
+                LogsButton_Click(this, new RoutedEventArgs());
+                e.Handled = true;
+            }
             else if (e.Key == Key.W)
             {
                 SwarmButton_Click(this, new RoutedEventArgs());
@@ -155,6 +160,23 @@ public partial class MainWindow : Window
             ShowFullScreen(FullScreen.None);
     }
 
+    /// <summary>
+    /// Jump to post-flight review: leave any full-window view and select the LOG
+    /// tab, so the summary sits beside the map showing the flight path.
+    /// </summary>
+    private void LogsButton_Click(object sender, RoutedEventArgs e)
+    {
+        ShowFullScreen(FullScreen.None);
+
+        bool entering = !_viewModel.IsLogReviewMode;
+        _viewModel.IsLogReviewMode = entering;
+
+        if (entering) _viewModel.Logs.RefreshRecent();
+    }
+
+    /// <summary>Return to the main flight view, e.g. to reach the floating advisor.</summary>
+    public void CloseFullScreenViews() => ShowFullScreen(FullScreen.None);
+
     private enum FullScreen { None, Params, Setup }
 
     /// <summary>
@@ -174,6 +196,7 @@ public partial class MainWindow : Window
         // First open on a connection: pull the parameters automatically.
         if (which == FullScreen.Params)
             _viewModel.Parameters.AutoRefreshIfNeeded();
+
     }
 
     private void MinimizeButton_Click(object sender, RoutedEventArgs e)
