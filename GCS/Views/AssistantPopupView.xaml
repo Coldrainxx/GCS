@@ -543,7 +543,8 @@
                                  Foreground="{StaticResource PrimaryText}"
                                  CaretBrush="{StaticResource PrimaryText}"
                                  BorderBrush="{StaticResource BorderCol}" BorderThickness="1"
-                                 Padding="8,6" FontSize="11" VerticalContentAlignment="Center">
+                                 Padding="8,6" FontSize="11" VerticalContentAlignment="Center"
+                                 PreviewLostKeyboardFocus="QuestionBox_PreviewLostKeyboardFocus">
                             <TextBox.InputBindings>
                                 <KeyBinding Key="Return" Command="{Binding AskCommand}"/>
                                 <KeyBinding Key="Esc" Command="{Binding CloseChatCommand}"/>

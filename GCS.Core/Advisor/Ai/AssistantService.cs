@@ -50,7 +50,8 @@ public sealed class AssistantService
         CancellationToken ct = default,
         Logging.FlightLogSummary? log = null,
         ParameterSnapshot? parameters = null,
-        SetupSnapshot? setup = null)
+        SetupSnapshot? setup = null,
+        SwarmSnapshot? swarm = null)
     {
         // Computed regardless: it is both the no-model answer and the safety net
         // if the provider fails.
@@ -64,6 +65,8 @@ public sealed class AssistantService
             named.Count > 0 ? AssistantResponder.RespondAboutParameters(named)
             : intent.Intent == AssistantIntent.Parameters
                 ? AssistantResponder.RespondAboutParameters(parameters)
+            : intent.Intent == AssistantIntent.Fleet
+                ? AssistantResponder.RespondAboutSwarm(swarm)
             : log != null ? AssistantResponder.RespondAboutLog(intent.Intent, log)
             : AssistantResponder.Respond(intent.Intent, report, state);
 
@@ -71,7 +74,7 @@ public sealed class AssistantService
             return new AssistantAnswer(builtIn, AnswerSource.BuiltIn, null);
 
         string userMessage = GroundingBuilder.BuildUserMessage(
-            question, report, state, nowUtc, log, parameters, setup);
+            question, report, state, nowUtc, log, parameters, setup, swarm);
         var reply = await _client
             .AskAsync(GroundingBuilder.SystemPrompt, userMessage, ct)
             .ConfigureAwait(false);

@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Input;
 using System.Windows.Navigation;
 using System.Windows.Threading;
 using GCS.ViewModels;
@@ -191,7 +192,41 @@ public partial class AssistantPopupView : UserControl
 
     private void OnWindowStateChanged(object? sender, EventArgs e) => UpdateVisibility();
 
-    private void OnWindowActivated(object? sender, EventArgs e) => UpdateVisibility();
+    private void OnWindowActivated(object? sender, EventArgs e)
+    {
+        UpdateVisibility();
+
+        // Coming back to the app with the chat open should leave the caret where the
+        // operator left it, not in the main window behind the panel.
+        if (_vm?.IsChatOpen == true) RestoreQuestionFocus();
+    }
+
+    /// <summary>
+    /// Keep the caret in the box when focus is being taken by another window rather
+    /// than by something the operator clicked.
+    ///
+    /// The map is a WebView2 — a child HWND of the main window — and while a swarm is
+    /// connected it is scripted ten times a second. That activity pulls activation
+    /// back to the main window, and because this panel is its own top-level window it
+    /// silently lost the keyboard, so typing stopped working.
+    ///
+    /// A deliberate click on another control reports a real NewFocus and is honoured;
+    /// only focus vanishing to nothing is refused.
+    /// </summary>
+    private void QuestionBox_PreviewLostKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
+    {
+        if (_vm?.IsChatOpen == true && e.NewFocus == null)
+            e.Handled = true;
+    }
+
+    private void RestoreQuestionFocus() =>
+        Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() =>
+        {
+            if (_vm?.IsChatOpen != true) return;
+            if (QuestionBox.IsKeyboardFocusWithin) return;
+            QuestionBox.Focus();
+            QuestionBox.CaretIndex = QuestionBox.Text.Length;
+        }));
 
     /// <summary>
     /// A popup is a top-level window, so it would otherwise hover over whatever app

@@ -243,6 +243,7 @@ public class MainViewModel : ViewModelBase, IDisposable
         // than as they were at connect.
         Advisor.ParameterProvider = () => Parameters.BuildAdvisorSnapshot();
         Advisor.SetupProvider = BuildSetupSnapshot;
+        Advisor.SwarmProvider = BuildSwarmSnapshot;
     }
 
     // Number of vehicles at the last mode decision, so we switch on the crossing
@@ -544,6 +545,35 @@ public class MainViewModel : ViewModelBase, IDisposable
             FrameDescription = frame,
         };
     }
+
+    /// <summary>
+    /// The connected fleet, for the advisor. Built even with one vehicle: the count
+    /// itself is a question the operator asks, and the answer must come from the
+    /// roster rather than from the single active vehicle's telemetry.
+    /// </summary>
+    private GCS.Core.Advisor.SwarmSnapshot BuildSwarmSnapshot() => new()
+    {
+        Vehicles = Swarm.Vehicles.Select(v => new GCS.Core.Advisor.SwarmVehicleInfo(
+            SystemId: v.SystemId,
+            Name: v.Name,
+            IsLeader: v.IsLeader,
+            IsActive: v.IsActive,
+            FlightMode: v.FlightMode,
+            IsArmed: v.IsArmed,
+            BatteryPercent: v.BatteryPercent,
+            Voltage: (float)v.Voltage,
+            GpsFix: v.GpsFix,
+            Satellites: v.Satellites,
+            AltitudeRelM: v.AltitudeRel,
+            Alert: v.AlertText ?? "",
+            Station: v.StationText ?? "")).ToList(),
+
+        FormationName = Swarm.Count > 1
+            ? GCS.Core.Swarm.FormationGeometry.DisplayName(Swarm.SelectedFormation)
+            : null,
+        SpacingM = Swarm.SpacingM,
+        FleetHealth = Swarm.FleetHealthText,
+    };
 
     private void OnVehicleStateChanged(VehicleState state)
     {

@@ -31,6 +31,45 @@ public static class AssistantResponder
         _ => Unknown(),
     };
 
+    /// <summary>Answer about the fleet as a whole.</summary>
+    public static string RespondAboutSwarm(SwarmSnapshot? swarm)
+    {
+        if (swarm is null || swarm.Count == 0)
+            return "No vehicles are connected.";
+
+        var lines = new List<string>
+        {
+            swarm.Count == 1
+                ? "One aircraft is connected."
+                : $"{swarm.Count} aircraft are connected."
+        };
+
+        if (swarm.IsSwarm)
+        {
+            lines.Add(swarm.Leader is null
+                ? "No leader has been assigned."
+                : $"Leader is {swarm.Leader.Name}.");
+        }
+
+        foreach (var v in swarm.Vehicles.OrderBy(v => v.SystemId))
+        {
+            var bits = new List<string> { v.FlightMode, v.IsArmed ? "ARMED" : "disarmed" };
+
+            if (v.Voltage > 0)
+                bits.Add(v.BatteryPercent > 0 ? $"{v.Voltage:F1} V ({v.BatteryPercent}%)" : $"{v.Voltage:F1} V");
+            else
+                bits.Add("battery not monitored");
+
+            bits.Add(v.GpsFix);
+            if (!string.IsNullOrWhiteSpace(v.Alert)) bits.Add("ALERT: " + v.Alert);
+
+            string role = v.IsLeader ? " (leader)" : "";
+            lines.Add($"{v.Name}{role}: {string.Join(" · ", bits)}");
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
     /// <summary>Answer about specific parameters the operator named.</summary>
     public static string RespondAboutParameters(IReadOnlyList<ParameterInfo> named)
     {

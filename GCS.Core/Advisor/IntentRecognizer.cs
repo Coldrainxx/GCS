@@ -18,6 +18,7 @@ public enum AssistantIntent
     Coverage,
     Parameters,
     Setup,
+    Fleet,
 }
 
 public readonly record struct IntentMatch(AssistantIntent Intent, int Score)
@@ -83,6 +84,12 @@ public static class IntentRecognizer
         (AssistantIntent.Setup, new[]
             { "setup", "calibration", "calibrate", "calibrated", "prearm", "preflight",
               "servo", "quraşdırma", "kalibrasiya" }),
+
+        // "aircraft"/"drone" belong to HealthReport, so the fleet is recognised by
+        // words that are only ever about several of them.
+        (AssistantIntent.Fleet, new[]
+            { "swarm", "fleet", "leader", "follower", "followers", "formation",
+              "aircrafts", "vehicles", "drones", "sürü", "lider", "formasiya" }),
     };
 
     /// <summary>Phrases that pin an intent outright, checked before word scoring.</summary>
@@ -95,6 +102,19 @@ public static class IntentRecognizer
         (AssistantIntent.HealthReport, "how is the aircraft"),
         (AssistantIntent.HealthReport, "how is it"),
         (AssistantIntent.Help, "what can you do"),
+
+        // Counting questions: "how many aircraft" must not fall into HealthReport
+        // just because it mentions the aircraft. Kept specific — a bare "how many"
+        // also opens "how many satellites", which is a GPS question.
+        (AssistantIntent.Fleet, "how many aircraft"),
+        (AssistantIntent.Fleet, "how many drone"),
+        (AssistantIntent.Fleet, "how many vehicle"),
+        (AssistantIntent.Fleet, "how many uav"),
+        (AssistantIntent.Fleet, "how many are connected"),
+        (AssistantIntent.Fleet, "which vehicle"),
+        (AssistantIntent.Fleet, "which drone"),
+        (AssistantIntent.Fleet, "all vehicles"),
+        (AssistantIntent.Fleet, "all drones"),
     };
 
     public static IntentMatch Recognize(string? input)

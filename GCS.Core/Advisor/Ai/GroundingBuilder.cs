@@ -133,9 +133,20 @@ public static class GroundingBuilder
         string question, FlightHealthReport report, VehicleState state, DateTime nowUtc,
         Logging.FlightLogSummary? log = null,
         ParameterSnapshot? parameters = null,
-        SetupSnapshot? setup = null)
+        SetupSnapshot? setup = null,
+        SwarmSnapshot? swarm = null)
     {
         var sb = new StringBuilder();
+
+        // The fleet comes first when there is one: the telemetry section below
+        // describes a single aircraft, and without this the model would describe
+        // the whole flight as if that were all there is.
+        if (swarm is { Count: > 0 })
+        {
+            sb.AppendLine(swarm.BuildSection());
+            sb.AppendLine();
+        }
+
         sb.AppendLine(BuildSnapshot(report, state, nowUtc));
 
         // Parameters and setup answer "why is it configured like this", which is a

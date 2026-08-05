@@ -85,6 +85,7 @@ public sealed class AdvisorViewModel : ViewModelBase
     /// </summary>
     public Func<ParameterSnapshot>? ParameterProvider { get; set; }
     public Func<SetupSnapshot>? SetupProvider { get; set; }
+    public Func<SwarmSnapshot>? SwarmProvider { get; set; }
 
     public bool HasLogContext => _logContext != null;
 
@@ -562,10 +563,11 @@ public sealed class AdvisorViewModel : ViewModelBase
         {
             var parameters = ParameterProvider?.Invoke();
             var setup = SetupProvider?.Invoke();
+            var swarm = SwarmProvider?.Invoke();
 
             var answer = await _assistant
                 .AnswerAsync(question, report, state, DateTime.UtcNow, default,
-                             _logContext, parameters, setup)
+                             _logContext, parameters, setup, swarm)
                 .ConfigureAwait(true);
 
             Append("Advisor", answer.Text, false);
