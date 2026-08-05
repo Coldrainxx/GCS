@@ -136,6 +136,7 @@ public class MainViewModel : ViewModelBase, IDisposable
                     ? new GCS.Core.Advisor.Ai.OpenAiCompatibleChatClient(assistantOptions)
                     : null),
             assistantOptions);
+
         Messages = new MessagesViewModel();
         RcChannels = new RcChannelsViewModel();
 
@@ -236,6 +237,12 @@ public class MainViewModel : ViewModelBase, IDisposable
 
         Connection.ConnectRequested += OnConnectRequested;
         Connection.DisconnectRequested += OnDisconnectRequested;
+
+        // Wired after Parameters exists. The advisor pulls these when a question is
+        // asked, so it always sees the parameters and setup as they are now rather
+        // than as they were at connect.
+        Advisor.ParameterProvider = () => Parameters.BuildAdvisorSnapshot();
+        Advisor.SetupProvider = BuildSetupSnapshot;
     }
 
     // Number of vehicles at the last mode decision, so we switch on the crossing
@@ -500,6 +507,42 @@ public class MainViewModel : ViewModelBase, IDisposable
             dispatcher.BeginInvoke(apply);
         else
             apply();
+    }
+
+    /// <summary>
+    /// Configuration the SETUP screens know about, for the advisor. Assembled here
+    /// because the pieces live in different ViewModels; parameter-derived values
+    /// come from the parameter snapshot rather than being duplicated.
+    /// </summary>
+    private GCS.Core.Advisor.SetupSnapshot BuildSetupSnapshot()
+    {
+        var checks = Preflight.Checks
+            .Select(c => (c.Name, c.StatusText, (string?)c.Reason))
+            .ToList();
+
+        var parameters = Parameters.BuildAdvisorSnapshot();
+
+        // Flight modes are parameters, so read them from what was actually loaded
+        // rather than keeping a second copy that could disagree.
+        var modes = new List<(int, string)>();
+        for (int i = 1; i <= 6; i++)
+        {
+            var p = parameters.Find($"FLTMODE{i}");
+            if (p != null)
+                modes.Add((i, GCS.Core.Domain.FlightModeNames.Describe((int)p.Value)));
+        }
+
+        string? frame = null;
+        var qEnable = parameters.Find("Q_ENABLE");
+        if (qEnable != null)
+            frame = qEnable.Value > 0 ? "QuadPlane (VTOL)" : "Fixed wing";
+
+        return new GCS.Core.Advisor.SetupSnapshot
+        {
+            PreflightChecks = checks,
+            FlightModes = modes,
+            FrameDescription = frame,
+        };
     }
 
     private void OnVehicleStateChanged(VehicleState state)

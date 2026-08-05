@@ -16,6 +16,8 @@ public enum AssistantIntent
     Position,
     FlightModeStatus,
     Coverage,
+    Parameters,
+    Setup,
 }
 
 public readonly record struct IntentMatch(AssistantIntent Intent, int Score)
@@ -73,6 +75,14 @@ public static class IntentRecognizer
         (AssistantIntent.Coverage, new[]
             { "monitored", "monitor", "missing", "unknown", "coverage", "measure",
               "measured", "see", "izlenir", "izlənir" }),
+
+        (AssistantIntent.Parameters, new[]
+            { "parameter", "parameters", "param", "params", "setting", "settings",
+              "value", "configured", "parametr", "parametrler", "parametrlər", "tenzim" }),
+
+        (AssistantIntent.Setup, new[]
+            { "setup", "calibration", "calibrate", "calibrated", "prearm", "preflight",
+              "servo", "quraşdırma", "kalibrasiya" }),
     };
 
     /// <summary>Phrases that pin an intent outright, checked before word scoring.</summary>

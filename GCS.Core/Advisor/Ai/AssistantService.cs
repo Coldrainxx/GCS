@@ -48,19 +48,30 @@ public sealed class AssistantService
         VehicleState state,
         DateTime nowUtc,
         CancellationToken ct = default,
-        Logging.FlightLogSummary? log = null)
+        Logging.FlightLogSummary? log = null,
+        ParameterSnapshot? parameters = null,
+        SetupSnapshot? setup = null)
     {
         // Computed regardless: it is both the no-model answer and the safety net
         // if the provider fails.
         var intent = IntentRecognizer.Recognize(question);
-        string builtIn = log != null
-            ? AssistantResponder.RespondAboutLog(intent.Intent, log)
+
+        // A named parameter is a specific question with a specific answer, so it
+        // takes precedence over the general intent it would otherwise fall into.
+        var named = parameters?.Mentioned(question) ?? Array.Empty<ParameterInfo>();
+
+        string builtIn =
+            named.Count > 0 ? AssistantResponder.RespondAboutParameters(named)
+            : intent.Intent == AssistantIntent.Parameters
+                ? AssistantResponder.RespondAboutParameters(parameters)
+            : log != null ? AssistantResponder.RespondAboutLog(intent.Intent, log)
             : AssistantResponder.Respond(intent.Intent, report, state);
 
         if (_client == null)
             return new AssistantAnswer(builtIn, AnswerSource.BuiltIn, null);
 
-        string userMessage = GroundingBuilder.BuildUserMessage(question, report, state, nowUtc, log);
+        string userMessage = GroundingBuilder.BuildUserMessage(
+            question, report, state, nowUtc, log, parameters, setup);
         var reply = await _client
             .AskAsync(GroundingBuilder.SystemPrompt, userMessage, ct)
             .ConfigureAwait(false);

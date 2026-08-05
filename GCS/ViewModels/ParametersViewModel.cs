@@ -296,6 +296,21 @@ public sealed class ParametersViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// The loaded parameters, for the flight advisor. Only ones the vehicle has
+    /// actually reported are included — an unloaded parameter has no value, and
+    /// offering its catalogue default would be inventing a setting.
+    /// </summary>
+    public GCS.Core.Advisor.ParameterSnapshot BuildAdvisorSnapshot() =>
+        new(Items.Where(i => i.HasValue).Select(i => new GCS.Core.Advisor.ParameterInfo(
+            Name: i.ResolvedName,
+            Value: (float)i.EditValue,
+            Units: i.Units,
+            Description: i.Description,
+            Min: (float?)i.Def.Min,
+            Max: (float?)i.Def.Max,
+            OutOfRange: i.IsOutOfRange)));
+
     public void UpdateConnectionState(bool connected)
     {
         IsConnected = connected;

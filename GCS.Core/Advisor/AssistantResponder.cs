@@ -31,6 +31,50 @@ public static class AssistantResponder
         _ => Unknown(),
     };
 
+    /// <summary>Answer about specific parameters the operator named.</summary>
+    public static string RespondAboutParameters(IReadOnlyList<ParameterInfo> named)
+    {
+        if (named.Count == 0) return "I could not find that parameter in what has been loaded.";
+
+        var lines = new List<string>();
+        foreach (var p in named)
+        {
+            var line = new System.Text.StringBuilder();
+            line.Append(p.Name).Append(" = ").Append(p.Value.ToString("0.####"));
+            if (!string.IsNullOrWhiteSpace(p.Units)) line.Append(' ').Append(p.Units);
+            if (p.Min.HasValue && p.Max.HasValue) line.Append($" (range {p.Min:0.###}..{p.Max:0.###})");
+            if (p.OutOfRange) line.Append(" — OUTSIDE its expected range");
+            if (!string.IsNullOrWhiteSpace(p.Description)) line.Append(". ").Append(p.Description);
+            lines.Add(line.ToString());
+        }
+
+        return string.Join(Environment.NewLine, lines);
+    }
+
+    /// <summary>Answer a general question about the parameter set.</summary>
+    public static string RespondAboutParameters(ParameterSnapshot? parameters)
+    {
+        if (parameters is null || parameters.IsEmpty)
+            return "No parameters have been read from the vehicle yet. " +
+                   "Open the PARAMS screen and refresh to load them.";
+
+        var lines = new List<string> { $"{parameters.Count} parameters loaded." };
+
+        var bad = parameters.OutOfRange;
+        if (bad.Count == 0)
+        {
+            lines.Add("None are outside their expected range.");
+        }
+        else
+        {
+            lines.Add($"{bad.Count} outside their expected range:");
+            lines.AddRange(bad.Take(10).Select(p => $"  {p.Name} = {p.Value:0.####}"));
+        }
+
+        lines.Add("Name a parameter and I will give you its value, e.g. \"what is BATT_CAPACITY\".");
+        return string.Join(Environment.NewLine, lines);
+    }
+
     /// <summary>
     /// The no-model answers when a recorded flight is under review. Same rule as
     /// live: anything the log does not contain is reported as absent.

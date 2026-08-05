@@ -78,6 +78,14 @@ public sealed class AdvisorViewModel : ViewModelBase
     /// </summary>
     private GCS.Core.Logging.FlightLogSummary? _logContext;
 
+    /// <summary>
+    /// Pulled fresh at question time rather than cached: parameters are loaded on
+    /// demand and edited during a session, so a snapshot taken at startup would be
+    /// empty and one taken at connect would go stale.
+    /// </summary>
+    public Func<ParameterSnapshot>? ParameterProvider { get; set; }
+    public Func<SetupSnapshot>? SetupProvider { get; set; }
+
     public bool HasLogContext => _logContext != null;
 
     public string LogContextText => _logContext is null
@@ -552,8 +560,12 @@ public sealed class AdvisorViewModel : ViewModelBase
         IsThinking = true;
         try
         {
+            var parameters = ParameterProvider?.Invoke();
+            var setup = SetupProvider?.Invoke();
+
             var answer = await _assistant
-                .AnswerAsync(question, report, state, DateTime.UtcNow, default, _logContext)
+                .AnswerAsync(question, report, state, DateTime.UtcNow, default,
+                             _logContext, parameters, setup)
                 .ConfigureAwait(true);
 
             Append("Advisor", answer.Text, false);

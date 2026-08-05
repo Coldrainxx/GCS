@@ -42,6 +42,11 @@ public static class GroundingBuilder
           detail. Use the units given.
         - If the snapshot does not contain what was asked about, say so directly
           instead of guessing.
+        - Parameter values, when listed, are the vehicle's current settings. Never
+          invent a parameter value or a range. If a parameter is not in the list,
+          say it has not been loaded rather than recalling a default.
+        - You may explain what a parameter does and suggest what to change, but you
+          cannot change it yourself — tell the operator where in the GCS to do it.
         """;
 
     /// <summary>
@@ -126,10 +131,27 @@ public static class GroundingBuilder
     /// <summary>The full user-side message: the operator's question plus its context.</summary>
     public static string BuildUserMessage(
         string question, FlightHealthReport report, VehicleState state, DateTime nowUtc,
-        Logging.FlightLogSummary? log = null)
+        Logging.FlightLogSummary? log = null,
+        ParameterSnapshot? parameters = null,
+        SetupSnapshot? setup = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine(BuildSnapshot(report, state, nowUtc));
+
+        // Parameters and setup answer "why is it configured like this", which is a
+        // different question from "what is it doing", and the two are often asked
+        // together — "battery is low, what is BATT_LOW_VOLT set to?"
+        if (parameters != null)
+        {
+            sb.AppendLine();
+            sb.AppendLine(parameters.BuildSection(question));
+        }
+
+        if (setup != null)
+        {
+            sb.AppendLine();
+            sb.AppendLine(setup.BuildSection());
+        }
 
         if (log != null)
         {
