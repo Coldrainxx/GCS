@@ -119,11 +119,17 @@
         <HeaderedContentControl Header="GCS" Style="{StaticResource GroupCard}">
             <StackPanel>
                 <CheckBox Content="GCS FailSafe" Style="{StaticResource Chk}" IsChecked="{Binding GcsFailsafe}"/>
-                <CheckBox Content="FailSafe Short (1 sec)" Style="{StaticResource Chk}" IsChecked="{Binding FailsafeShort}"/>
-                <CheckBox Content="FailSafe Long (20 sec)" Style="{StaticResource Chk}" IsChecked="{Binding FailsafeLong}"/>
+                <!-- Plane only: a copter has no short/long failsafe action pair. -->
+                <CheckBox Content="FailSafe Short (1 sec)" Style="{StaticResource Chk}"
+                          IsChecked="{Binding FailsafeShort}"
+                          Visibility="{Binding HasShortLongActions, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                <CheckBox Content="FailSafe Long (20 sec)" Style="{StaticResource Chk}"
+                          IsChecked="{Binding FailsafeLong}"
+                          Visibility="{Binding HasShortLongActions, Converter={StaticResource BoolToVisibilityConverter}}"/>
             </StackPanel>
         </HeaderedContentControl>
 
+        <TextBlock Text="{Binding VehicleKindText}" Foreground="{StaticResource Muted}" FontSize="11" Margin="2,4,0,0"/>
         <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource Muted}" FontSize="12" Margin="2,2,0,0"/>
     </StackPanel>
 </UserControl>

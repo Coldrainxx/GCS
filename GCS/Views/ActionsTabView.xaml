@@ -169,19 +169,22 @@
                 </WrapPanel>
             </Border>
 
-            <!-- VTOL Modes -->
-            <TextBlock Text="VTOL MODES (QUADPLANE)" 
+            <!-- VTOL Modes. Hidden on a multirotor or rover: these send Q-modes,
+                 which only ArduPlane has. -->
+            <TextBlock Text="VTOL MODES (QUADPLANE)"
                       Foreground="{StaticResource VtolColor}"
                       FontSize="11"
                       FontWeight="Bold"
-                      Margin="5,0,0,8"/>
+                      Margin="5,0,0,8"
+                      Visibility="{Binding IsVtolVehicle, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
             <Border Background="{StaticResource CardBackground}"
                     BorderBrush="{StaticResource VtolColor}"
                     BorderThickness="1"
                     CornerRadius="8"
                     Padding="12"
-                    Margin="0,0,0,12">
+                    Margin="0,0,0,12"
+                    Visibility="{Binding IsVtolVehicle, Converter={StaticResource BoolToVisibilityConverter}}">
                 <WrapPanel>
                     <Button Content="QHOVER"
                            Command="{Binding QHoverCommand}"

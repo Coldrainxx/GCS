@@ -91,6 +91,47 @@ public sealed class SetupViewModel : ViewModelBase
         SelectedSection = flightModes;
     }
 
+    private GCS.Core.Mavlink.VehicleKind _vehicleKind = GCS.Core.Mavlink.VehicleKind.Unknown;
+
+    /// <summary>
+    /// Hide the tuning screens that write plane-only parameters.
+    ///
+    /// Basic Tuning edits the plane's servo PIDs and Extended Tuning the QuadPlane
+    /// Q_A_RAT_* gains; neither exists on a copter, so on one they would read blank
+    /// and write nothing. The copter equivalents (ATC_*) are in the PARAMS screen.
+    /// Calibration, radio, compass, ESC and flight-mode screens are vehicle-agnostic
+    /// and stay.
+    /// </summary>
+    public void SetVehicleKind(GCS.Core.Mavlink.VehicleKind kind)
+    {
+        if (kind == _vehicleKind || kind == GCS.Core.Mavlink.VehicleKind.Unknown) return;
+        _vehicleKind = kind;
+
+        // FLTMODE1-6 exist on every vehicle but hold different mode numbers, so the
+        // choices offered have to match the connected aircraft.
+        FlightModes.SetVehicleKind(kind);
+
+        bool isPlane = kind == GCS.Core.Mavlink.VehicleKind.Plane;
+
+        foreach (var name in new[] { "Basic Tuning", "Extended Tuning" })
+        {
+            var existing = Sections.FirstOrDefault(s => s.Title == name);
+
+            if (!isPlane && existing != null)
+            {
+                if (ReferenceEquals(SelectedSection, existing))
+                    SelectedSection = Sections.FirstOrDefault(s => s.Title == "Flight Modes");
+
+                Sections.Remove(existing);
+            }
+            else if (isPlane && existing == null)
+            {
+                Sections.Add(new SetupSection(name,
+                    name == "Basic Tuning" ? BasicTuning : ExtendedTuning));
+            }
+        }
+    }
+
     private static IReadOnlyList<PidGroupDef> BasicTuningGroups() => new[]
     {
         new PidGroupDef("Servo Roll PID", new[]

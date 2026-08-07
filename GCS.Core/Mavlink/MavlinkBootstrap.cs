@@ -61,6 +61,7 @@ public static class MavlinkBootstrap
             73,  // MISSION_ITEM_INT
             
             36,  // SERVO_OUTPUT_RAW  (motor output balance)
+            66,  // REQUEST_DATA_STREAM (asks the vehicle to start streaming)
             65,  // RC_CHANNELS
             74,  // VFR_HUD
 

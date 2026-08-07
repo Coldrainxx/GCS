@@ -65,6 +65,14 @@ internal sealed class FakeBackend : IMavlinkBackend
         return Task.CompletedTask;
     }
 
+    public int TelemetryStreamRequests { get; private set; }
+
+    public Task RequestTelemetryStreamsAsync(byte targetSystem = 0, CancellationToken ct = default)
+    {
+        TelemetryStreamRequests++;
+        return Task.CompletedTask;
+    }
+
     // Raise the health events from tests.
     public void EmitVibration(byte sys, VibrationState v) => VibrationReceived?.Invoke(sys, v);
     public void EmitEkf(byte sys, EkfStatusState e) => EkfStatusReceived?.Invoke(sys, e);

@@ -4,10 +4,15 @@ using System.Collections.Generic;
 namespace GCS.Core.Mavlink;
 
 /// <summary>
-/// Buffers incoming bytes and extracts complete MAVLink v2 frames.
+/// Buffers incoming bytes and extracts complete MAVLink frames, v1 or v2.
 /// Handles fragmented packets that arrive across multiple chunks, signed
 /// frames (incompat flag 0x01 adds a 13-byte signature), and resynchronises
-/// on the start marker after garbage or a corrupt length.
+/// on a start marker after garbage or a corrupt length.
+///
+/// Both versions are accepted because a vehicle configured for MAVLink 1
+/// (SERIALn_PROTOCOL = 1) starts every frame with 0xFE. Scanning only for the v2
+/// marker made such a link look completely dead — no heartbeat, no telemetry,
+/// nothing to diagnose from.
 /// </summary>
 public class MavlinkFrameBuffer
 {
@@ -17,6 +22,8 @@ public class MavlinkFrameBuffer
 
     private const byte MAVLINK_V2_START = 0xFD;
     private const int MAVLINK_V2_HEADER_LEN = 10;
+    private const byte MAVLINK_V1_START = 0xFE;
+    private const int MAVLINK_V1_HEADER_LEN = 6;
     private const int MAVLINK_V2_CHECKSUM_LEN = 2;
     private const int MAVLINK_V2_SIGNATURE_LEN = 13;
     private const byte MAVLINK_IFLAG_SIGNED = 0x01;
@@ -41,8 +48,11 @@ public class MavlinkFrameBuffer
                 return frames;
             }
 
+            bool isV2 = _buffer[startIdx] == MAVLINK_V2_START;
+            int headerLen = isV2 ? MAVLINK_V2_HEADER_LEN : MAVLINK_V1_HEADER_LEN;
+
             int remaining = _bufferPos - startIdx;
-            if (remaining < MAVLINK_V2_HEADER_LEN)
+            if (remaining < headerLen)
             {
                 // Not enough for a header yet - keep the partial, wait for more.
                 ShiftBuffer(startIdx);
@@ -50,12 +60,17 @@ public class MavlinkFrameBuffer
             }
 
             byte payloadLen = _buffer[startIdx + 1];
-            byte incompatFlags = _buffer[startIdx + 2];
-            int signatureLen = (incompatFlags & MAVLINK_IFLAG_SIGNED) != 0
-                ? MAVLINK_V2_SIGNATURE_LEN
-                : 0;
 
-            int totalFrameLen = MAVLINK_V2_HEADER_LEN
+            // Only v2 carries incompat flags, and only v2 frames can be signed.
+            int signatureLen = 0;
+            if (isV2)
+            {
+                byte incompatFlags = _buffer[startIdx + 2];
+                if ((incompatFlags & MAVLINK_IFLAG_SIGNED) != 0)
+                    signatureLen = MAVLINK_V2_SIGNATURE_LEN;
+            }
+
+            int totalFrameLen = headerLen
                 + payloadLen
                 + MAVLINK_V2_CHECKSUM_LEN
                 + signatureLen;
@@ -101,7 +116,7 @@ public class MavlinkFrameBuffer
     {
         for (int i = from; i < _bufferPos; i++)
         {
-            if (_buffer[i] == MAVLINK_V2_START)
+            if (_buffer[i] == MAVLINK_V2_START || _buffer[i] == MAVLINK_V1_START)
                 return i;
         }
         return -1;

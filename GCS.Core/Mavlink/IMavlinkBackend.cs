@@ -34,6 +34,12 @@ public interface IMavlinkBackend : IDisposable
     /// <summary>Ask the autopilot to start streaming the health messages.</summary>
     Task RequestHealthStreamsAsync(byte targetSystem = 0, CancellationToken ct = default);
 
+    /// <summary>
+    /// Ask the autopilot to stream telemetry at all. Needed because a vehicle whose
+    /// SRn_* rates are zero sends only heartbeats.
+    /// </summary>
+    Task RequestTelemetryStreamsAsync(byte targetSystem = 0, CancellationToken ct = default);
+
     /// <summary>Raw complete MAVLink packets, for telemetry logging (RX / TX).</summary>
     event Action<ReadOnlyMemory<byte>>? RawFrameReceived;
     event Action<ReadOnlyMemory<byte>>? RawFrameSent;

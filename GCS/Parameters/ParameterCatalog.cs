@@ -72,6 +72,36 @@ public static class ParameterCatalog
     private const string Quad = "QuadPlane";
     private const string QuadPid = "QuadPlane PIDs";
 
+    // ── Copter groups ────────────────────────────────────────────────
+    private const string CopterFrame = "Copter frame";
+    private const string CopterFs = "Copter failsafe";
+    private const string CopterFlight = "Copter flight";
+    private const string CopterPid = "Copter PIDs";
+
+    /// <summary>
+    /// Groups that only exist on one vehicle family. A copter has no airspeed
+    /// sensor and no Q-modes; a plane has none of the copter groups. Showing the
+    /// wrong set is not dangerous — the values simply never load — but it buries
+    /// the parameters that do apply.
+    /// </summary>
+    private static readonly string[] PlaneOnlyGroups =
+        { Airspeed, Takeoff, Quad, QuadPid, Nav, Tecs };
+
+    private static readonly string[] CopterOnlyGroups =
+        { CopterFrame, CopterFs, CopterFlight, CopterPid };
+
+    /// <summary>Whether a group applies to this vehicle. Unknown shows everything.</summary>
+    public static bool AppliesTo(string group, GCS.Core.Mavlink.VehicleKind kind) => kind switch
+    {
+        GCS.Core.Mavlink.VehicleKind.Copter => !PlaneOnlyGroups.Contains(group),
+        GCS.Core.Mavlink.VehicleKind.Plane => !CopterOnlyGroups.Contains(group),
+        _ => true,
+    };
+
+    /// <summary>The catalogue filtered to one vehicle family.</summary>
+    public static IReadOnlyList<ParameterDef> For(GCS.Core.Mavlink.VehicleKind kind) =>
+        All.Where(p => AppliesTo(p.Group, kind)).ToList();
+
     public static readonly IReadOnlyList<ParameterDef> All = new List<ParameterDef>
     {
         // ── Airspeed & Baro ──────────────────────────────────────────
@@ -276,5 +306,63 @@ public static class ParameterCatalog
         new(new[]{ "Q_A_RAT_YAW_FLTE" }, QuadPid, "Yaw E filter", "Yaw error filter.") { Units="Hz", Decimals=0, Min=0, Max=20 },
         new(new[]{ "Q_A_RAT_YAW_FLTT" }, QuadPid, "Yaw T filter", "Yaw target filter.") { Units="Hz", Decimals=0, Min=1, Max=50 },
         new(new[]{ "Q_A_RAT_YAW_SMAX" }, QuadPid, "Yaw slew max", "Yaw slew-rate limit.") { Decimals=0, Min=0, Max=200 },
+
+        // ══ ArduCopter ═══════════════════════════════════════════════
+        // Only shown when the connected vehicle is a multirotor. Names are
+        // ArduCopter's own — several overlap conceptually with the plane entries
+        // above but are spelled differently (FS_THR_ENABLE vs THR_FAILSAFE).
+
+        // ── Frame ────────────────────────────────────────────────────
+        new(new[]{ "FRAME_CLASS" }, CopterFrame, "Frame class", "Airframe layout: quad, hexa, octa, and so on.") { Decimals=0, Min=0, Max=15 },
+        new(new[]{ "FRAME_TYPE" }, CopterFrame, "Frame type", "Motor arrangement within the frame class (X, plus, V…).") { Decimals=0, Min=0, Max=18 },
+        new(new[]{ "MOT_PWM_TYPE" }, CopterFrame, "Motor PWM type", "Output protocol to the ESCs (normal PWM, OneShot, DShot).") { Decimals=0, Min=0, Max=8 },
+        new(new[]{ "MOT_SPIN_ARM" }, CopterFrame, "Spin when armed", "Motor output when armed and throttle is at minimum.") { Decimals=3, Min=0, Max=0.5 },
+        new(new[]{ "MOT_SPIN_MIN" }, CopterFrame, "Minimum spin", "Lowest motor output used in flight.") { Decimals=3, Min=0, Max=0.5 },
+        new(new[]{ "MOT_SPIN_MAX" }, CopterFrame, "Maximum spin", "Highest motor output used in flight.") { Decimals=3, Min=0.9, Max=1 },
+        new(new[]{ "MOT_THST_HOVER" }, CopterFrame, "Hover thrust", "Learned throttle needed to hover.") { Decimals=3, Min=0.08, Max=0.8 },
+        new(new[]{ "MOT_BAT_VOLT_MAX" }, CopterFrame, "Battery volt max", "Pack voltage for thrust scaling at full charge.") { Units="V", Decimals=1, Min=0, Max=60 },
+        new(new[]{ "MOT_BAT_VOLT_MIN" }, CopterFrame, "Battery volt min", "Pack voltage for thrust scaling when flat.") { Units="V", Decimals=1, Min=0, Max=60 },
+
+        // ── Failsafe ─────────────────────────────────────────────────
+        new(new[]{ "FS_THR_ENABLE" }, CopterFs, "Throttle failsafe", "What to do when the RC link is lost.") { Decimals=0, Min=0, Max=6 },
+        new(new[]{ "FS_THR_VALUE" }, CopterFs, "Throttle FS PWM", "Throttle PWM below which the RC link counts as lost.") { Units="PWM", Decimals=0, Min=910, Max=1100 },
+        new(new[]{ "FS_GCS_ENABLE" }, CopterFs, "GCS failsafe", "What to do when the ground station link is lost.") { Decimals=0, Min=0, Max=7 },
+        new(new[]{ "FS_EKF_ACTION" }, CopterFs, "EKF failsafe action", "Response to an unhealthy position estimate.") { Decimals=0, Min=1, Max=3 },
+        new(new[]{ "FS_EKF_THRESH" }, CopterFs, "EKF failsafe threshold", "Variance above which the EKF counts as failed.") { Decimals=1, Min=0.6, Max=1 },
+        new(new[]{ "FS_CRASH_CHECK" }, CopterFs, "Crash check", "Disarm automatically when a crash is detected.") { Decimals=0, Min=0, Max=1 },
+        new(new[]{ "FS_VIBE_ENABLE" }, CopterFs, "Vibration failsafe", "Compensate when vibration corrupts the estimate.") { Decimals=0, Min=0, Max=1 },
+        new(new[]{ "FS_OPTIONS" }, CopterFs, "Failsafe options", "Bitmask of extra failsafe behaviours.") { Decimals=0, Min=0, Max=255 },
+
+        // ── Flight behaviour ─────────────────────────────────────────
+        new(new[]{ "PILOT_SPEED_UP" }, CopterFlight, "Max climb rate", "Fastest climb the pilot can command.") { Units="cm/s", Decimals=0, Min=50, Max=2000 },
+        new(new[]{ "PILOT_SPEED_DN" }, CopterFlight, "Max descent rate", "Fastest descent the pilot can command. 0 uses the climb rate.") { Units="cm/s", Decimals=0, Min=0, Max=2000 },
+        new(new[]{ "PILOT_ACCEL_Z" }, CopterFlight, "Vertical acceleration", "Vertical acceleration limit.") { Units="cm/s/s", Decimals=0, Min=50, Max=500 },
+        new(new[]{ "ANGLE_MAX" }, CopterFlight, "Max lean angle", "Largest lean angle the pilot can command.") { Units="cdeg", Decimals=0, Min=1000, Max=8000 },
+        new(new[]{ "WPNAV_SPEED" }, CopterFlight, "Waypoint speed", "Horizontal speed between waypoints.") { Units="cm/s", Decimals=0, Min=20, Max=2000 },
+        new(new[]{ "WPNAV_SPEED_UP" }, CopterFlight, "Waypoint climb speed", "Climb speed during auto missions.") { Units="cm/s", Decimals=0, Min=10, Max=1000 },
+        new(new[]{ "WPNAV_SPEED_DN" }, CopterFlight, "Waypoint descent speed", "Descent speed during auto missions.") { Units="cm/s", Decimals=0, Min=10, Max=500 },
+        new(new[]{ "WPNAV_RADIUS" }, CopterFlight, "Waypoint radius", "Distance at which a waypoint counts as reached.") { Units="cm", Decimals=0, Min=5, Max=1000 },
+        new(new[]{ "RTL_ALT" }, CopterFlight, "RTL altitude", "Altitude climbed to before returning. 0 returns at the current height.") { Units="cm", Decimals=0, Min=0, Max=30000 },
+        new(new[]{ "RTL_LOIT_TIME" }, CopterFlight, "RTL loiter time", "Pause above home before descending.") { Units="ms", Decimals=0, Min=0, Max=60000 },
+        new(new[]{ "LAND_SPEED" }, CopterFlight, "Landing speed", "Descent rate for the final part of a landing.") { Units="cm/s", Decimals=0, Min=30, Max=200 },
+        new(new[]{ "LAND_ALT_LOW" }, CopterFlight, "Landing slow-down height", "Height at which the slower landing speed begins.") { Units="cm", Decimals=0, Min=100, Max=10000 },
+
+        // ── Attitude PIDs ────────────────────────────────────────────
+        new(new[]{ "ATC_ANG_RLL_P" }, CopterPid, "Roll angle P", "Roll angle controller gain.") { Decimals=3, Min=3, Max=12 },
+        new(new[]{ "ATC_ANG_PIT_P" }, CopterPid, "Pitch angle P", "Pitch angle controller gain.") { Decimals=3, Min=3, Max=12 },
+        new(new[]{ "ATC_ANG_YAW_P" }, CopterPid, "Yaw angle P", "Yaw angle controller gain.") { Decimals=3, Min=3, Max=12 },
+        new(new[]{ "ATC_RAT_RLL_P" }, CopterPid, "Roll rate P", "Roll rate controller P gain.") { Decimals=4, Min=0.01, Max=0.5 },
+        new(new[]{ "ATC_RAT_RLL_I" }, CopterPid, "Roll rate I", "Roll rate controller I gain.") { Decimals=4, Min=0.01, Max=2 },
+        new(new[]{ "ATC_RAT_RLL_D" }, CopterPid, "Roll rate D", "Roll rate controller D gain.") { Decimals=4, Min=0, Max=0.05 },
+        new(new[]{ "ATC_RAT_PIT_P" }, CopterPid, "Pitch rate P", "Pitch rate controller P gain.") { Decimals=4, Min=0.01, Max=0.5 },
+        new(new[]{ "ATC_RAT_PIT_I" }, CopterPid, "Pitch rate I", "Pitch rate controller I gain.") { Decimals=4, Min=0.01, Max=2 },
+        new(new[]{ "ATC_RAT_PIT_D" }, CopterPid, "Pitch rate D", "Pitch rate controller D gain.") { Decimals=4, Min=0, Max=0.05 },
+        new(new[]{ "ATC_RAT_YAW_P" }, CopterPid, "Yaw rate P", "Yaw rate controller P gain.") { Decimals=4, Min=0.1, Max=2.5 },
+        new(new[]{ "ATC_RAT_YAW_I" }, CopterPid, "Yaw rate I", "Yaw rate controller I gain.") { Decimals=4, Min=0.01, Max=1 },
+        new(new[]{ "ATC_RAT_YAW_D" }, CopterPid, "Yaw rate D", "Yaw rate controller D gain.") { Decimals=4, Min=0, Max=0.02 },
+        new(new[]{ "ATC_THR_MIX_MAN" }, CopterPid, "Throttle mix manual", "Attitude-versus-throttle priority when flown manually.") { Decimals=2, Min=0.1, Max=2 },
+        new(new[]{ "ATC_ACCEL_R_MAX" }, CopterPid, "Roll accel max", "Maximum roll acceleration.") { Units="cdeg/s/s", Decimals=0, Min=0, Max=180000 },
+        new(new[]{ "ATC_ACCEL_P_MAX" }, CopterPid, "Pitch accel max", "Maximum pitch acceleration.") { Units="cdeg/s/s", Decimals=0, Min=0, Max=180000 },
+        new(new[]{ "ATC_ACCEL_Y_MAX" }, CopterPid, "Yaw accel max", "Maximum yaw acceleration.") { Units="cdeg/s/s", Decimals=0, Min=0, Max=72000 },
     };
 }

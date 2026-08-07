@@ -341,8 +341,9 @@ public class MainViewModel : ViewModelBase, IDisposable
         Setup.UpdateConnectionState(true);
         _ = Failsafe.RefreshFailsafeParams();
 
-        // ArduPilot streams none of the health messages by default, so vibration,
-        // EKF, motor-output and power analysis stay blank until they are asked for.
+        // ArduPilot streams nothing but heartbeats on a port whose SRn_* rates are
+        // zero, and never sends the health messages unless asked. Both are requested
+        // here, which is what Mission Planner does on connect.
         // Fire-and-forget: an autopilot that does not support a message simply
         // never sends it, and the advisor reports absent data as unmonitored.
         _ = Task.Run(async () =>
@@ -352,7 +353,7 @@ public class MainViewModel : ViewModelBase, IDisposable
                 // Let the heartbeat settle so the target system id is known.
                 await Task.Delay(1500);
                 var backend = _session?.Backend;
-                if (backend != null) await backend.RequestHealthStreamsAsync();
+                if (backend != null) await backend.RequestTelemetryStreamsAsync();
             }
             catch (Exception ex)
             {
@@ -533,10 +534,17 @@ public class MainViewModel : ViewModelBase, IDisposable
                 modes.Add((i, GCS.Core.Domain.FlightModeNames.Describe((int)p.Value)));
         }
 
-        string? frame = null;
-        var qEnable = parameters.Find("Q_ENABLE");
-        if (qEnable != null)
-            frame = qEnable.Value > 0 ? "QuadPlane (VTOL)" : "Fixed wing";
+        // From the heartbeat rather than Q_ENABLE, which only exists on ArduPlane —
+        // on a copter that check silently produced no airframe at all.
+        string? frame = _lastVehicleKind switch
+        {
+            GCS.Core.Mavlink.VehicleKind.Copter => "Multirotor",
+            GCS.Core.Mavlink.VehicleKind.Rover => "Rover / boat",
+            GCS.Core.Mavlink.VehicleKind.Submarine => "Submarine",
+            GCS.Core.Mavlink.VehicleKind.Plane =>
+                parameters.Find("Q_ENABLE")?.Value > 0 ? "QuadPlane (VTOL)" : "Fixed wing",
+            _ => null,
+        };
 
         return new GCS.Core.Advisor.SetupSnapshot
         {
@@ -551,6 +559,9 @@ public class MainViewModel : ViewModelBase, IDisposable
     /// itself is a question the operator asks, and the answer must come from the
     /// roster rather than from the single active vehicle's telemetry.
     /// </summary>
+    /// <summary>Latest identified vehicle family, for screens that need it outside a state update.</summary>
+    private GCS.Core.Mavlink.VehicleKind _lastVehicleKind = GCS.Core.Mavlink.VehicleKind.Unknown;
+
     private GCS.Core.Advisor.SwarmSnapshot BuildSwarmSnapshot() => new()
     {
         Vehicles = Swarm.Vehicles.Select(v => new GCS.Core.Advisor.SwarmVehicleInfo(
@@ -594,6 +605,14 @@ public class MainViewModel : ViewModelBase, IDisposable
         // Same state the HUD shows, so the advisor always describes the aircraft
         // the operator is looking at rather than a merged multi-vehicle blend.
         Advisor.UpdateFromVehicleState(state);
+
+        // Failsafe parameter names differ per vehicle family; point that screen at
+        // the right ones as soon as the heartbeat identifies the airframe.
+        if (state.Kind != GCS.Core.Mavlink.VehicleKind.Unknown) _lastVehicleKind = state.Kind;
+
+        Failsafe.SetVehicleKind(state.Kind);
+        Parameters.SetVehicleKind(state.Kind);
+        Setup.SetVehicleKind(state.Kind);
 
         bool isConnected = state.FlightMode.HasValue || state.Position != null || state.Attitude != null;
         Preflight.UpdateConnectionState(isConnected);

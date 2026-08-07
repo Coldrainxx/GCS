@@ -65,6 +65,26 @@ public static class Mavlink2Serializer
         });
     }
 
+    /// <summary>
+    /// REQUEST_DATA_STREAM (66). Deprecated in the MAVLink spec but still what
+    /// ArduPilot actually honours, and what Mission Planner sends on connect.
+    /// Without it a vehicle whose SRn_* rates are zero sends only heartbeats.
+    /// </summary>
+    public static ReadOnlyMemory<byte> RequestDataStream(
+        byte targetSys, byte targetComp,
+        byte senderSys, byte senderComp,
+        byte streamId, ushort rateHz, bool start = true)
+    {
+        return Build(66, senderSys, senderComp, new()
+        {
+            ["target_system"] = targetSys,
+            ["target_component"] = targetComp,
+            ["req_stream_id"] = streamId,
+            ["req_message_rate"] = rateHz,
+            ["start_stop"] = (byte)(start ? 1 : 0),
+        });
+    }
+
     /// <summary>SET_MODE (11)</summary>
     public static ReadOnlyMemory<byte> SetMode(
         byte targetSys,

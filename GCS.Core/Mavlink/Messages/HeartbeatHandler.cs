@@ -31,9 +31,13 @@ public sealed class HeartbeatHandler : IMavlinkMessageHandler
         // Check armed status from base_mode (bit 7 = 0x80 = 128)
         bool isArmed = (baseMode & 0x80) != 0;
 
+        // Mode numbers are per vehicle family: Copter mode 5 is Loiter, Plane 5 is
+        // FBWA. Decode against the right table rather than assuming a plane.
+        byte mavType = frame.Fields.TryGetValue("type", out var t) ? Convert.ToByte(t) : (byte)0;
+        var kind = ArdupilotFlightModes.KindFromMavType(mavType);
 
-
-        var mode = ArdupilotPlaneFlightModeMapper.FromCustomMode(customMode);
+        var mode = ArdupilotFlightModes.PlaneMode(kind, customMode);
+        string modeName = ArdupilotFlightModes.Describe(kind, customMode);
 
         _connection.OnHeartbeat(
             frame.SystemId,
@@ -46,7 +50,9 @@ public sealed class HeartbeatHandler : IMavlinkMessageHandler
             frame.ComponentId,
             mode,
             isArmed,
-            now
+            now,
+            kind,
+            modeName
         ));
     }
 }

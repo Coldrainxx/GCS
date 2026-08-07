@@ -13,6 +13,11 @@ public record VehicleState(
     // Health telemetry. Null until the message arrives, which for most of these
     // means the autopilot was asked for them and has started streaming — see
     // MavlinkBackend.RequestHealthStreamsAsync.
+    // Display name for the current mode, correct for whatever vehicle family this
+    // is. FlightMode above is plane-typed and is null on a Copter or Rover.
+    string? FlightModeName = null,
+    Mavlink.VehicleKind Kind = Mavlink.VehicleKind.Unknown,
+
     VibrationState? Vibration = null,
     EkfStatusState? Ekf = null,
     ServoOutputState? ServoOutput = null,

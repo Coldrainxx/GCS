@@ -69,7 +69,8 @@ public static class FlightLogAnalyzer
         DateTime lastSample = DateTime.MinValue;
         DateTime? armedSince = null;
         bool? wasArmed = null;
-        FlightMode? lastMode = null;
+        string? lastModeName = null;
+        var kind = Mavlink.VehicleKind.Unknown;
         double? lastLat = null, lastLon = null;
         var findings = new HashSet<string>(StringComparer.Ordinal);
 
@@ -98,10 +99,17 @@ public static class FlightLogAnalyzer
                         uint customMode = Convert.ToUInt32(frame.Fields["custom_mode"]);
                         bool armed = (baseMode & MavModeFlagSafetyArmed) != 0;
 
-                        // Fully qualified: MavLinkSharp also declares an Enum type.
-                        var mode = System.Enum.IsDefined(typeof(FlightMode), (int)customMode)
-                            ? (FlightMode)(int)customMode
-                            : FlightMode.Unknown;
+                        // Mode numbers mean different things per vehicle family, so
+                        // decode against the type this log was recorded from rather
+                        // than assuming a plane.
+                        byte mavType = frame.Fields.TryGetValue("type", out var typeField)
+                            ? Convert.ToByte(typeField) : (byte)0;
+
+                        if (kind == Mavlink.VehicleKind.Unknown)
+                            kind = Mavlink.ArdupilotFlightModes.KindFromMavType(mavType);
+
+                        string modeName = Mavlink.ArdupilotFlightModes.Describe(kind, customMode);
+                        var mode = Mavlink.ArdupilotFlightModes.PlaneMode(kind, customMode);
 
                         if (wasArmed != armed)
                         {
@@ -120,17 +128,19 @@ public static class FlightLogAnalyzer
                             wasArmed = armed;
                         }
 
-                        if (lastMode != mode)
+                        if (lastModeName != modeName)
                         {
                             // The first heartbeat is the starting mode, not a change.
                             summary.Events.Add(new FlightEvent(now, "Mode",
-                                lastMode is null ? $"Mode {mode}" : $"Mode {lastMode} → {mode}"));
-                            lastMode = mode;
+                                lastModeName is null ? $"Mode {modeName}" : $"Mode {lastModeName} → {modeName}"));
+                            lastModeName = modeName;
                         }
 
                         state = state with
                         {
                             FlightMode = mode,
+                            FlightModeName = modeName,
+                            Kind = kind,
                             IsArmed = armed,
                             Connection = new ConnectionState(true, frame.SystemId, frame.ComponentId, now),
                         };

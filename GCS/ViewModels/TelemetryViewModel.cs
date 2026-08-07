@@ -92,7 +92,11 @@ public class TelemetryViewModel : ViewModelBase
             LastHeartbeat = state.Connection.LastHeartbeatUtc.ToLocalTime().ToString("HH:mm:ss");
         }
 
-        if (state.FlightMode.HasValue)
+        // Prefer the decoded name: it is correct for whatever vehicle family this
+        // is, whereas the enum can only name ArduPlane modes.
+        if (!string.IsNullOrEmpty(state.FlightModeName))
+            FlightMode = state.FlightModeName;
+        else if (state.FlightMode.HasValue)
             FlightMode = state.FlightMode.Value.ToString();
 
         // Update armed status

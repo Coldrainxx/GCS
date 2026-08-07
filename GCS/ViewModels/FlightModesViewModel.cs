@@ -30,8 +30,34 @@ public sealed class FlightModesViewModel : ViewModelBase
         (1750, 9999, "≥ 1750"),
     };
 
-    public IReadOnlyList<ParamOption> Modes { get; } =
-        ParameterOptions.For("INITIAL_MODE") ?? Array.Empty<ParamOption>();
+    /// <summary>
+    /// Choices offered for each switch position.
+    ///
+    /// FLTMODE1-6 are named the same on every vehicle, but the numbers they hold
+    /// mean different modes — so the list has to come from the connected vehicle's
+    /// own table. Offering plane modes on a copter would write a number that
+    /// selects something else entirely.
+    /// </summary>
+    public ObservableCollection<ParamOption> Modes { get; } =
+        new(ParameterOptions.For("INITIAL_MODE") ?? Array.Empty<ParamOption>());
+
+    private GCS.Core.Mavlink.VehicleKind _vehicleKind = GCS.Core.Mavlink.VehicleKind.Unknown;
+
+    public void SetVehicleKind(GCS.Core.Mavlink.VehicleKind kind)
+    {
+        if (kind == _vehicleKind || kind == GCS.Core.Mavlink.VehicleKind.Unknown) return;
+        _vehicleKind = kind;
+
+        if (kind == GCS.Core.Mavlink.VehicleKind.Plane) return;   // already the plane list
+
+        Modes.Clear();
+        foreach (var (name, mode) in GCS.Core.Mavlink.ArdupilotFlightModes.ModesFor(kind))
+            Modes.Add(new ParamOption(mode, name));
+
+        // Re-resolve each slot against the new list, so a value already read from
+        // the vehicle keeps showing the right name rather than an empty box.
+        foreach (var slot in Slots) slot.RefreshSelection();
+    }
 
     public ObservableCollection<FlightModeSlot> Slots { get; } = new();
 
@@ -164,6 +190,13 @@ public sealed class FlightModeSlot : ViewModelBase
         get => _modeValue;
         set => SetProperty(ref _modeValue, value);
     }
+
+    /// <summary>
+    /// Re-raise the bound value so the ComboBox resolves it against a replaced
+    /// choice list; otherwise the box goes blank after the list changes even though
+    /// the value read from the vehicle is still correct.
+    /// </summary>
+    public void RefreshSelection() => OnPropertyChanged(nameof(ModeValue));
 
     private bool _isActive;
     public bool IsActive

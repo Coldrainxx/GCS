@@ -378,6 +378,81 @@ public sealed class MavlinkBackend : IMavlinkBackend
     /// message simply never sends it, and the health rules already report absent
     /// data as unmonitored.
     /// </summary>
+    /// <summary>
+    /// Ask the vehicle to start sending telemetry at all.
+    ///
+    /// ArduPilot streams nothing but HEARTBEAT on a port whose SRn_* rates are zero,
+    /// which looks exactly like a broken link: the mode shows, and no other value
+    /// ever arrives. Mission Planner avoids this by sending REQUEST_DATA_STREAM on
+    /// connect; this does the same.
+    ///
+    /// Both mechanisms are sent. REQUEST_DATA_STREAM is deprecated but is what
+    /// ArduPilot reliably honours, including on MAVLink 1 links; SET_MESSAGE_INTERVAL
+    /// is the modern per-message equivalent. Sending both costs a handful of packets
+    /// once per connection and covers old and new firmware alike.
+    /// </summary>
+    public async Task RequestTelemetryStreamsAsync(byte targetSystem = 0, CancellationToken ct = default)
+    {
+        var (sys, comp) = ResolveTarget(targetSystem);
+
+        // MAV_DATA_STREAM groups, with the rates Mission Planner uses as a guide.
+        // Kept modest so a 57600-baud radio is not saturated.
+        var streams = new (byte Id, ushort Rate)[]
+        {
+            (2, 2),    // EXTENDED_STATUS — SYS_STATUS, GPS_RAW_INT
+            (6, 3),    // POSITION        — GLOBAL_POSITION_INT
+            (10, 4),   // EXTRA1          — ATTITUDE
+            (11, 4),   // EXTRA2          — VFR_HUD
+            (12, 2),   // EXTRA3          — AHRS, VIBRATION, EKF_STATUS_REPORT
+            (3, 2),    // RC_CHANNELS     — RC_CHANNELS, SERVO_OUTPUT_RAW
+        };
+
+        foreach (var (id, rate) in streams)
+        {
+            try
+            {
+                await SendPacketAsync(
+                    Mavlink2Serializer.RequestDataStream(sys, comp, GcsSysId, GcsCompId, id, rate),
+                    ct);
+                await Task.Delay(40, ct);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[Backend] Stream group {id} request failed: {ex.Message}");
+            }
+        }
+
+        // Per-message intervals for the core telemetry, for firmware that prefers
+        // the modern mechanism.
+        var core = new (uint Id, int IntervalUs)[]
+        {
+            (0, 1_000_000),    // HEARTBEAT
+            (1, 500_000),      // SYS_STATUS
+            (24, 500_000),     // GPS_RAW_INT
+            (30, 250_000),     // ATTITUDE
+            (33, 333_000),     // GLOBAL_POSITION_INT
+            (74, 250_000),     // VFR_HUD
+        };
+
+        foreach (var (id, interval) in core)
+        {
+            try
+            {
+                await SendCommandLongAsync(MAV_CMD_SET_MESSAGE_INTERVAL,
+                    param1: id, param2: interval, targetSystem: targetSystem, ct: ct);
+                await Task.Delay(40, ct);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[Backend] Interval request for {id} failed: {ex.Message}");
+            }
+        }
+
+        await RequestHealthStreamsAsync(targetSystem, ct);
+    }
+
     public async Task RequestHealthStreamsAsync(byte targetSystem = 0, CancellationToken ct = default)
     {
         // (message id, interval in microseconds)

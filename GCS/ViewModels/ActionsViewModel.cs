@@ -161,6 +161,30 @@ public class ActionsViewModel : ViewModelBase
         AvailableModes.Add(new FlightModeItem(FlightModeEnum.QAcro, "QACRO", true));
     }
 
+    /// <summary>
+    /// Replace the mode list with the connected vehicle's own modes. The startup
+    /// list is ArduPlane's; on a Copter every entry in it is either absent or means
+    /// something else.
+    /// </summary>
+    private void RebuildModes()
+    {
+        if (_vehicleKind is GCS.Core.Mavlink.VehicleKind.Plane or GCS.Core.Mavlink.VehicleKind.Unknown)
+            return;   // the startup list already is the plane list
+
+        int previous = SelectedModeIndex;
+
+        AvailableModes.Clear();
+        foreach (var (name, _) in GCS.Core.Mavlink.ArdupilotFlightModes.ModesFor(_vehicleKind))
+        {
+            // The enum only spans ArduPlane, so it is not meaningful here; the name
+            // is what SetModeAsync resolves against.
+            AvailableModes.Add(new FlightModeItem(FlightModeEnum.Unknown, name, false));
+        }
+
+        SelectedModeIndex = previous >= 0 && previous < AvailableModes.Count ? previous : -1;
+        Debug.WriteLine($"[ActionsViewModel] Mode list rebuilt for {_vehicleKind}");
+    }
+
     private async Task ArmAsync()
     {
         // Arming spins motors on a QuadPlane — always confirm.
@@ -214,18 +238,30 @@ public class ActionsViewModel : ViewModelBase
         }
     }
 
-    private async Task SetModeAsync(FlightModeEnum mode)
+    private Task SetModeAsync(FlightModeEnum mode) => SetModeByNameAsync(mode.ToString().ToUpper());
+
+    private async Task SetModeByNameAsync(string modeName)
     {
         try
         {
-            string modeName = mode.ToString().ToUpper();
             LastCommandResult = $"Setting {modeName}...";
             Debug.WriteLine($"[ActionsViewModel] Setting mode to {modeName}...");
 
-            uint customMode = ArdupilotPlaneFlightModeMapper.ToCustomMode(mode);
+            // Encode for the connected vehicle family, not always as a plane: the
+            // same number means different modes, so asking a Copter for RTL with
+            // plane numbering would select DRIFT instead.
+            uint? resolved = ArdupilotFlightModes.ToCustomMode(_vehicleKind, modeName);
+
+            if (resolved is null)
+            {
+                LastCommandResult = $"{modeName} is not available on this vehicle";
+                Debug.WriteLine($"[ActionsViewModel] {modeName} unsupported for {_vehicleKind}");
+                return;
+            }
+
             byte baseMode = (byte)(IsArmed ? 0xD1 : 0x51);
 
-            await _backend.SendSetModeAsync(baseMode, customMode);
+            await _backend.SendSetModeAsync(baseMode, resolved.Value);
             LastCommandResult = $"{modeName} sent";
         }
         catch (Exception ex)
@@ -237,15 +273,49 @@ public class ActionsViewModel : ViewModelBase
 
     private async Task SetSelectedModeAsync()
     {
-        if (SelectedModeIndex >= 0 && SelectedModeIndex < AvailableModes.Count)
-        {
-            await SetModeAsync(AvailableModes[SelectedModeIndex].Mode);
-        }
+        if (SelectedModeIndex < 0 || SelectedModeIndex >= AvailableModes.Count) return;
+
+        // By display name, not the enum: on a Copter the list is built from that
+        // vehicle's own modes and the plane enum cannot represent them.
+        await SetModeByNameAsync(AvailableModes[SelectedModeIndex].DisplayName);
     }
+
+    private GCS.Core.Mavlink.VehicleKind _vehicleKind = GCS.Core.Mavlink.VehicleKind.Unknown;
+
+    /// <summary>
+    /// Whether the VTOL quick-access buttons apply. They send QHOVER/QLOITER/QLAND/
+    /// QRTL, which exist only on ArduPlane — on a copter they would be refused, so
+    /// the panel hides them rather than offering dead controls.
+    /// </summary>
+    public bool IsVtolVehicle =>
+        _vehicleKind is GCS.Core.Mavlink.VehicleKind.Plane or GCS.Core.Mavlink.VehicleKind.Unknown;
+
+    public string VehicleKindText => _vehicleKind switch
+    {
+        GCS.Core.Mavlink.VehicleKind.Copter => "Multirotor",
+        GCS.Core.Mavlink.VehicleKind.Plane => "Fixed wing / VTOL",
+        GCS.Core.Mavlink.VehicleKind.Rover => "Rover",
+        GCS.Core.Mavlink.VehicleKind.Submarine => "Submarine",
+        _ => "",
+    };
 
     public void UpdateFromVehicleState(VehicleState state)
     {
-        if (state.FlightMode.HasValue)
+        // The mode list and the numbers sent both depend on what kind of vehicle
+        // this is, which only the heartbeat can tell us.
+        if (state.Kind != _vehicleKind && state.Kind != GCS.Core.Mavlink.VehicleKind.Unknown)
+        {
+            _vehicleKind = state.Kind;
+            RebuildModes();
+            OnPropertyChanged(nameof(IsVtolVehicle));
+            OnPropertyChanged(nameof(VehicleKindText));
+        }
+
+        if (!string.IsNullOrEmpty(state.FlightModeName))
+        {
+            FlightMode = state.FlightModeName;
+        }
+        else if (state.FlightMode.HasValue)
         {
             FlightMode = state.FlightMode.Value.ToString().ToUpper();
         }

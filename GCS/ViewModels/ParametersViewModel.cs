@@ -79,6 +79,36 @@ public sealed class ParametersViewModel : ViewModelBase
         LoadFileCommand = new RelayCommand(LoadFromFile, () => !IsLoading);
     }
 
+    private GCS.Core.Mavlink.VehicleKind _vehicleKind = GCS.Core.Mavlink.VehicleKind.Unknown;
+
+    /// <summary>
+    /// Narrow the list to the connected vehicle's parameters. A copter has no
+    /// airspeed or Q-mode parameters and a plane has no ATC_/WPNAV_ ones; showing
+    /// both leaves half the screen permanently blank and buries what does apply.
+    /// </summary>
+    public void SetVehicleKind(GCS.Core.Mavlink.VehicleKind kind)
+    {
+        if (kind == _vehicleKind || kind == GCS.Core.Mavlink.VehicleKind.Unknown) return;
+        _vehicleKind = kind;
+
+        // Values already read are kept: rebuilding would discard them and the
+        // vehicle would have to be re-interrogated for no reason.
+        var existing = Items.Where(i => i.HasValue)
+            .ToDictionary(i => i.Name, StringComparer.OrdinalIgnoreCase);
+
+        Items.Clear();
+        foreach (var def in ParameterCatalog.For(kind))
+        {
+            var item = existing.TryGetValue(def.Name, out var kept)
+                ? kept
+                : new ParameterItemViewModel(def);
+            Items.Add(item);
+        }
+
+        ItemsView.Refresh();
+        StatusMessage = $"{Items.Count} parameters for this vehicle";
+    }
+
     /// <summary>Kick off a refresh the first time the panel opens on a connection.</summary>
     public void AutoRefreshIfNeeded()
     {

@@ -61,11 +61,18 @@ public sealed class ParameterSnapshot
         "FS_SHORT_ACTN", "FS_LONG_ACTN", "FS_GCS_ENABL", "THR_FAILSAFE",
         // Arming and safety
         "ARMING_CHECK", "ARMING_REQUIRE", "RTL_ALTITUDE", "FENCE_ENABLE",
-        // Airspeed
+        // Airspeed (plane)
         "ARSPD_TYPE", "ARSPD_USE", "AIRSPEED_CRUISE", "TRIM_ARSPD_CM",
-        // Flight modes
+        // Flight modes (all vehicles)
         "FLTMODE_CH", "FLTMODE1", "FLTMODE2", "FLTMODE3",
         "FLTMODE4", "FLTMODE5", "FLTMODE6",
+
+        // Copter equivalents. Listed alongside rather than instead: only the ones
+        // the vehicle actually loaded are ever shown, so both sets can coexist and
+        // whichever airframe is connected gets a useful summary.
+        "FS_THR_ENABLE", "FS_THR_VALUE", "FS_GCS_ENABLE", "FS_EKF_ACTION",
+        "MOT_PWM_TYPE", "MOT_SPIN_ARM", "MOT_SPIN_MIN", "MOT_THST_HOVER",
+        "ANGLE_MAX", "PILOT_SPEED_UP", "WPNAV_SPEED", "RTL_ALT", "LAND_SPEED",
     };
 
     /// <summary>Matches parameter-style tokens, e.g. BATT_CAPACITY or Q_ENABLE.</summary>

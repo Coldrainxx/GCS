@@ -47,14 +47,50 @@ public class FailsafeViewModel : ViewModelBase
     public float BattLowTimer { get => _battLowTimer; set => SetFloat(ref _battLowTimer, value, nameof(BattLowTimer), "BATT_LOW_TIMER"); }
     public double BattAction { get => _battAction; set => SetDouble(ref _battAction, value, nameof(BattAction), "BATT_FS_LOW_ACT"); }
 
+    // ── Vehicle-dependent names ──────────────────────────────────────
+
+    private GCS.Core.Mavlink.VehicleKind _vehicleKind = GCS.Core.Mavlink.VehicleKind.Unknown;
+    private GCS.Core.Mavlink.FailsafeParameterSet _params =
+        GCS.Core.Mavlink.FailsafeParameterSet.For(GCS.Core.Mavlink.VehicleKind.Unknown);
+
+    /// <summary>
+    /// Point the screen at the right parameter names. Plane and copter name these
+    /// settings differently, and writing the wrong name configures nothing at all
+    /// while appearing to succeed.
+    /// </summary>
+    public void SetVehicleKind(GCS.Core.Mavlink.VehicleKind kind)
+    {
+        if (kind == _vehicleKind || kind == GCS.Core.Mavlink.VehicleKind.Unknown) return;
+
+        _vehicleKind = kind;
+        _params = GCS.Core.Mavlink.FailsafeParameterSet.For(kind);
+
+        OnPropertyChanged(nameof(HasShortLongActions));
+        OnPropertyChanged(nameof(VehicleKindText));
+
+        // The previous vehicle's values are meaningless here.
+        _ = RefreshFailsafeParams();
+    }
+
+    /// <summary>Plane-only: a copter has no short/long failsafe action pair.</summary>
+    public bool HasShortLongActions => _params.HasShortLongActions;
+
+    public string VehicleKindText => _vehicleKind switch
+    {
+        GCS.Core.Mavlink.VehicleKind.Copter => "Multirotor failsafe settings",
+        GCS.Core.Mavlink.VehicleKind.Rover => "Rover failsafe settings",
+        GCS.Core.Mavlink.VehicleKind.Plane => "Plane / VTOL failsafe settings",
+        _ => "Failsafe settings",
+    };
+
     // ── Radio ────────────────────────────────────────────────────────
-    public float FsPwm { get => _fsPwm; set => SetFloat(ref _fsPwm, value, nameof(FsPwm), "THR_FS_VALUE"); }
-    public bool ThrottleFailsafe { get => _throttleFailsafe; set => SetBool(ref _throttleFailsafe, value, nameof(ThrottleFailsafe), "THR_FAILSAFE"); }
+    public float FsPwm { get => _fsPwm; set => SetFloat(ref _fsPwm, value, nameof(FsPwm), _params.RadioPwm); }
+    public bool ThrottleFailsafe { get => _throttleFailsafe; set => SetBool(ref _throttleFailsafe, value, nameof(ThrottleFailsafe), _params.RadioEnable); }
 
     // ── GCS ──────────────────────────────────────────────────────────
-    public bool GcsFailsafe { get => _gcsFailsafe; set => SetBool(ref _gcsFailsafe, value, nameof(GcsFailsafe), "FS_GCS_ENABL"); }
-    public bool FailsafeShort { get => _failsafeShort; set => SetBool(ref _failsafeShort, value, nameof(FailsafeShort), "FS_SHORT_ACTN"); }
-    public bool FailsafeLong { get => _failsafeLong; set => SetBool(ref _failsafeLong, value, nameof(FailsafeLong), "FS_LONG_ACTN"); }
+    public bool GcsFailsafe { get => _gcsFailsafe; set => SetBool(ref _gcsFailsafe, value, nameof(GcsFailsafe), _params.GcsEnable); }
+    public bool FailsafeShort { get => _failsafeShort; set => SetBool(ref _failsafeShort, value, nameof(FailsafeShort), _params.ShortAction ?? ""); }
+    public bool FailsafeLong { get => _failsafeLong; set => SetBool(ref _failsafeLong, value, nameof(FailsafeLong), _params.LongAction ?? ""); }
 
     public bool IsConnected
     {
@@ -132,18 +168,25 @@ public class FailsafeViewModel : ViewModelBase
             _applying = true;
             try
             {
-                switch (paramId.ToUpperInvariant())
+                string name = paramId.ToUpperInvariant();
+
+                switch (name)
                 {
                     case "BATT_LOW_VOLT": BattLowVolt = value; break;
                     case "BATT_LOW_MAH": BattLowMah = value; break;
                     case "BATT_LOW_TIMER": BattLowTimer = value; break;
                     case "BATT_FS_LOW_ACT": BattAction = value; break;
-                    case "THR_FS_VALUE": FsPwm = value; break;
-                    case "THR_FAILSAFE": ThrottleFailsafe = value > 0; break;
-                    case "FS_GCS_ENABL":
-                    case "FS_GCS_ENABLE": GcsFailsafe = value > 0; break;
                     case "FS_SHORT_ACTN": FailsafeShort = value > 0; break;
                     case "FS_LONG_ACTN": FailsafeLong = value > 0; break;
+
+                    default:
+                        // Both vehicles' spellings are accepted, so a value is never
+                        // dropped just because the heartbeat has not identified the
+                        // airframe yet.
+                        if (GCS.Core.Mavlink.FailsafeParameterSet.IsRadioPwm(name)) FsPwm = value;
+                        else if (GCS.Core.Mavlink.FailsafeParameterSet.IsRadioEnable(name)) ThrottleFailsafe = value > 0;
+                        else if (GCS.Core.Mavlink.FailsafeParameterSet.IsGcsEnable(name)) GcsFailsafe = value > 0;
+                        break;
                 }
             }
             finally { _applying = false; }
@@ -158,12 +201,9 @@ public class FailsafeViewModel : ViewModelBase
         StatusMessage = "Loading failsafe parameters…";
         try
         {
-            foreach (var p in new[]
-            {
-                "BATT_LOW_VOLT", "BATT_LOW_MAH", "BATT_LOW_TIMER", "BATT_FS_LOW_ACT",
-                "THR_FS_VALUE", "THR_FAILSAFE",
-                "FS_GCS_ENABL", "FS_SHORT_ACTN", "FS_LONG_ACTN"
-            })
+            // Names come from the vehicle's own set, so a copter is asked for
+            // FS_THR_ENABLE rather than the plane's THR_FAILSAFE.
+            foreach (var p in _params.AllNames())
             {
                 await _requestParamFunc(p);
                 await Task.Delay(40);

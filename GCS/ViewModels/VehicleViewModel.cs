@@ -143,7 +143,11 @@ public sealed class VehicleViewModel : ViewModelBase, IDisposable
 
     public bool IsArmed => State.IsArmed;
     public string ArmedText => IsArmed ? "ARMED" : "DISARMED";
-    public string FlightMode => State.FlightMode?.ToString().ToUpperInvariant() ?? "UNKNOWN";
+    // The decoded name first: it is right for any vehicle family, while the enum
+    // only names ArduPlane modes.
+    public string FlightMode =>
+        !string.IsNullOrEmpty(State.FlightModeName) ? State.FlightModeName
+        : State.FlightMode?.ToString().ToUpperInvariant() ?? "UNKNOWN";
 
     public string GpsFix => State.Gps?.FixTypeString ?? "NO GPS";
     public int Satellites => State.Gps?.SatellitesVisible ?? 0;

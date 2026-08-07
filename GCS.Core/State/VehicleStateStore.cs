@@ -90,6 +90,12 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
         {
             if (hb.Mode != null)
                 s = s with { FlightMode = hb.Mode };
+
+            // Carried separately because the plane-typed enum above cannot name a
+            // Copter or Rover mode — their numbers mean something else entirely.
+            if (!string.IsNullOrEmpty(hb.ModeName))
+                s = s with { FlightModeName = hb.ModeName, Kind = hb.Kind };
+
             return s with { IsArmed = hb.IsArmed };
         });
     }

@@ -100,6 +100,10 @@ public sealed class SwarmViewModel : ViewModelBase, IDisposable
         var now = DateTime.UtcNow;
         int warnings = 0, criticals = 0;
 
+        // Vehicle kind only becomes known once a heartbeat arrives, so the mode
+        // list is settled here rather than at discovery.
+        RefreshModeList();
+
         foreach (var v in Vehicles)
         {
             var previous = _lastAlertLevel.TryGetValue(v.SystemId, out var p) ? p : VehicleAlertLevel.None;
@@ -150,6 +154,38 @@ public sealed class SwarmViewModel : ViewModelBase, IDisposable
         new FlightModeItem(FlightModeEnum.QLand, "QLAND", true),
         new FlightModeItem(FlightModeEnum.QRtl, "QRTL", true),
     };
+
+    private GCS.Core.Mavlink.VehicleKind _fleetKind = GCS.Core.Mavlink.VehicleKind.Unknown;
+
+    /// <summary>
+    /// Offer the modes the fleet actually has. The startup list is ArduPlane's; a
+    /// copter fleet would otherwise be shown FBW-A and QHOVER, which it cannot fly.
+    /// A mixed fleet keeps the plane list, and per-vehicle encoding at send time
+    /// skips any vehicle that lacks the chosen mode.
+    /// </summary>
+    private void RefreshModeList()
+    {
+        var kinds = Vehicles
+            .Select(v => v.State.Kind)
+            .Where(k => k != GCS.Core.Mavlink.VehicleKind.Unknown)
+            .Distinct()
+            .ToList();
+
+        var kind = kinds.Count == 1 ? kinds[0] : GCS.Core.Mavlink.VehicleKind.Unknown;
+        if (kind == _fleetKind) return;
+
+        _fleetKind = kind;
+        if (kind is GCS.Core.Mavlink.VehicleKind.Plane or GCS.Core.Mavlink.VehicleKind.Unknown)
+            return;   // the startup list already is the plane list
+
+        int previous = SelectedModeIndex;
+        AvailableModes.Clear();
+
+        foreach (var (name, _) in GCS.Core.Mavlink.ArdupilotFlightModes.ModesFor(kind))
+            AvailableModes.Add(new FlightModeItem(FlightModeEnum.Unknown, name, false));
+
+        SelectedModeIndex = previous >= 0 && previous < AvailableModes.Count ? previous : -1;
+    }
 
     private int _selectedModeIndex = -1;
     public int SelectedModeIndex
@@ -418,13 +454,22 @@ public sealed class SwarmViewModel : ViewModelBase, IDisposable
     {
         if (!Confirm($"Set ALL {Count} vehicle(s) to {label}?", $"Confirm {label} ALL")) return;
 
-        uint customMode = ArdupilotPlaneFlightModeMapper.ToCustomMode(mode);
         await ForEachVehicle(label, (backend, sysid) =>
         {
-            // Base mode must reflect that vehicle's own armed state.
             var vehicle = Vehicles.FirstOrDefault(v => v.SystemId == sysid);
+
+            // Encoded per vehicle, not once for the fleet: a mixed fleet can hold
+            // both planes and copters, where the same mode name is a different
+            // number. A vehicle without the mode is skipped rather than sent one
+            // that means something else.
+            var kind = vehicle?.State.Kind ?? GCS.Core.Mavlink.VehicleKind.Unknown;
+            uint? customMode = GCS.Core.Mavlink.ArdupilotFlightModes.ToCustomMode(kind, label);
+
+            if (customMode is null)
+                throw new InvalidOperationException($"{label} is not available on UAV {sysid}");
+
             byte baseMode = (byte)(vehicle?.IsArmed == true ? 0xD1 : 0x51);
-            return backend.SendSetModeAsync(baseMode, customMode, targetSystem: sysid);
+            return backend.SendSetModeAsync(baseMode, customMode.Value, targetSystem: sysid);
         });
     }
 
