@@ -253,9 +253,13 @@
 
             <!-- TAB 7: 3D MODEL -->
             <TabItem Header="3D MODEL" Style="{StaticResource ModernTabItem}" Visibility="{Binding DataContext.IsNotLogReviewMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}">
+                <!-- The model follows the connected vehicle: a multirotor shows the
+                     drone mesh, anything else the fixed-wing one. -->
                 <views:Model3DTabView Roll="{Binding Roll}"
                                       Pitch="{Binding Pitch}"
-                                      Yaw="{Binding Yaw}"/>
+                                      Yaw="{Binding Yaw}"
+                                      StlModelPath="{Binding DataContext.UavModelFile,
+                                                     RelativeSource={RelativeSource AncestorType=Window}}"/>
             </TabItem>
             <!-- TAB: MISSION -->
             <TabItem Header="MISSION" Style="{StaticResource ModernTabItem}" Visibility="{Binding DataContext.IsNotLogReviewMode, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibilityConverter}}">

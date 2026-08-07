@@ -94,6 +94,15 @@ public partial class MapView : UserControl
 
     private void OnMainViewModelPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(GCS.ViewModels.MainViewModel.UavModelFile))
+        {
+            // Keep the map's 3D aircraft matching the connected vehicle, the same
+            // way the 3D tab does.
+            var file = _mainVm?.UavModelFile;
+            if (!string.IsNullOrEmpty(file)) ExecuteScript($"setUavModel('{file}');");
+            return;
+        }
+
         if (e.PropertyName == nameof(GCS.ViewModels.MainViewModel.IsLogReviewMode))
         {
             // Reviewing a flight strips the map to that path: mission waypoints and
@@ -237,6 +246,11 @@ public partial class MapView : UserControl
             // The map starts in single-UAV mode; sync it in case we're already in swarm mode.
             if (_mainVm?.IsSwarmMode == true) ExecuteScript("setSwarmMode(true);");
             if (_mainVm?.IsLogReviewMode == true) ExecuteScript("setLogReviewMode(true);");
+
+            // The page loads with the fixed-wing model; correct it if a copter is
+            // already connected when the map finishes initialising.
+            if (_mainVm?.UavModelFile is { Length: > 0 } model)
+                ExecuteScript($"setUavModel('{model}');");
 
             if (DataContext is GCS.ViewModels.TelemetryViewModel vm)
             {

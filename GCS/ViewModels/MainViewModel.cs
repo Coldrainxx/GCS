@@ -562,6 +562,16 @@ public class MainViewModel : ViewModelBase, IDisposable
     /// <summary>Latest identified vehicle family, for screens that need it outside a state update.</summary>
     private GCS.Core.Mavlink.VehicleKind _lastVehicleKind = GCS.Core.Mavlink.VehicleKind.Unknown;
 
+    /// <summary>
+    /// STL shown in the 3D view, chosen from the connected vehicle. A fixed-wing
+    /// model banking around while a multirotor hovers is actively misleading about
+    /// what the aircraft is doing.
+    /// </summary>
+    public string UavModelFile =>
+        _lastVehicleKind == GCS.Core.Mavlink.VehicleKind.Copter
+            ? "swarmdrone.stl"
+            : "WCR.master_1.stl";
+
     private GCS.Core.Advisor.SwarmSnapshot BuildSwarmSnapshot() => new()
     {
         Vehicles = Swarm.Vehicles.Select(v => new GCS.Core.Advisor.SwarmVehicleInfo(
@@ -608,7 +618,11 @@ public class MainViewModel : ViewModelBase, IDisposable
 
         // Failsafe parameter names differ per vehicle family; point that screen at
         // the right ones as soon as the heartbeat identifies the airframe.
-        if (state.Kind != GCS.Core.Mavlink.VehicleKind.Unknown) _lastVehicleKind = state.Kind;
+        if (state.Kind != GCS.Core.Mavlink.VehicleKind.Unknown && state.Kind != _lastVehicleKind)
+        {
+            _lastVehicleKind = state.Kind;
+            OnPropertyChanged(nameof(UavModelFile));
+        }
 
         Failsafe.SetVehicleKind(state.Kind);
         Parameters.SetVehicleKind(state.Kind);

@@ -14,7 +14,15 @@ namespace GCS.Views;
 public partial class Model3DTabView : UserControl
 {
     private const string DefaultStlFilename = "WCR.master_1.stl";
+    /// <summary>Fallback factor if a model reports no usable bounds.</summary>
     private const double ModelScale = 0.01;
+
+    /// <summary>
+    /// Scene units the model should span. Chosen so the fixed-wing mesh keeps the
+    /// size it always had at its 0.01 factor, while any other model fits the same
+    /// frame regardless of the units it was authored in.
+    /// </summary>
+    private const double TargetModelExtent = 12.0;
     private const double InitialYawOffset = 0.0;
     private const int UpdateIntervalMs = 33;
 
@@ -513,7 +521,14 @@ public partial class Model3DTabView : UserControl
         _modelTransformGroup.Children.Add(new TranslateTransform3D(
             -modelCenter.X, -modelCenter.Y, -modelCenter.Z));
 
-        _modelTransformGroup.Children.Add(new ScaleTransform3D(ModelScale, ModelScale, ModelScale));
+        // Fit to a target size rather than a fixed factor. ModelScale was tuned for
+        // the fixed-wing mesh; the drone STL is a different size in its own units,
+        // so a constant would render it wildly too large or too small.
+        var bounds = model.Bounds;
+        double extent = Math.Max(bounds.SizeX, Math.Max(bounds.SizeY, bounds.SizeZ));
+        double scale = extent > 0.001 ? TargetModelExtent / extent : ModelScale;
+
+        _modelTransformGroup.Children.Add(new ScaleTransform3D(scale, scale, scale));
 
         if (Math.Abs(InitialYawOffset) > 0.001)
         {

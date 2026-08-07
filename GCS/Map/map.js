@@ -293,6 +293,48 @@
 
     // 3D UAV model rendered with Three.js inside a MapLibre custom layer.
     // Only drawn in 3D (tilted) view; 2D uses the flat DOM arrow marker.
+    // Held so the mesh can be swapped when the connected vehicle changes.
+    var uavLayer = null;
+
+    /**
+     * Load an STL into the single-UAV layer, replacing whatever is there.
+     * Splitting this out of onAdd is what makes the model swappable: the layer
+     * itself is created once, but the aircraft it represents can change.
+     */
+    function loadUavMesh(layer, url) {
+        new THREE.STLLoader().load(url, function (geometry) {
+            geometry.computeVertexNormals();
+            geometry.center();
+            geometry.computeBoundingBox();
+            var size = new THREE.Vector3();
+            geometry.boundingBox.getSize(size);
+            layer.modelRadius = Math.max(size.x, size.y, size.z) || 1;
+
+            if (layer.mesh) {
+                layer.scene.remove(layer.mesh);
+                layer.mesh.geometry.dispose();
+            }
+
+            layer.mesh = new THREE.Mesh(
+                geometry,
+                new THREE.MeshPhongMaterial({ color: 0xff9500, shininess: 25 }));
+            layer.scene.add(layer.mesh);
+            modelReady = true;
+            if (is3D && map) map.triggerRepaint();
+        }, undefined, function (err) { console.error("[map] STL load failed:", err); });
+    }
+
+    /** Swap the 3D aircraft, e.g. plane -> multirotor on connecting a copter. */
+    window.setUavModel = function (fileName) {
+        if (!fileName) return;
+
+        var url = "models/" + fileName;
+        if (url === MODEL_URL) return;
+
+        MODEL_URL = url;
+        if (uavLayer) loadUavMesh(uavLayer, url);
+    };
+
     function addUavModelLayer() {
         var layer = {
             id: "uav-3d",
@@ -306,20 +348,8 @@
                 var d2 = new THREE.DirectionalLight(0xffffff, 0.5); d2.position.set(0, 70, 100).normalize(); this.scene.add(d2);
 
                 var self = this;
-                new THREE.STLLoader().load(MODEL_URL, function (geometry) {
-                    geometry.computeVertexNormals();
-                    geometry.center();
-                    geometry.computeBoundingBox();
-                    var size = new THREE.Vector3();
-                    geometry.boundingBox.getSize(size);
-                    self.modelRadius = Math.max(size.x, size.y, size.z) || 1;
-                    self.mesh = new THREE.Mesh(
-                        geometry,
-                        new THREE.MeshPhongMaterial({ color: 0xff9500, shininess: 25 }));
-                    self.scene.add(self.mesh);
-                    modelReady = true;
-                    if (is3D && map) map.triggerRepaint();
-                }, undefined, function (err) { console.error("[map] STL load failed:", err); });
+                uavLayer = self;
+                loadUavMesh(self, MODEL_URL);
 
                 this.renderer = new THREE.WebGLRenderer({ canvas: m.getCanvas(), context: gl, antialias: true });
                 this.renderer.autoClear = false;
