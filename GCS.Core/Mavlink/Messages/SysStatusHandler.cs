@@ -18,8 +18,12 @@ public sealed class SysStatusHandler : IMavlinkMessageHandler
 
     public void Handle(Frame frame)
     {
-        // SYS_STATUS has single uint16 voltage_battery (in mV), not an array
+        // SYS_STATUS has single uint16 voltage_battery (in mV), not an array.
+        // UINT16_MAX is MAVLink's "not measured" sentinel — a USB-powered board with
+        // no pack reports it. Taken literally it becomes 65.54 V, which looks like a
+        // real reading and defeats every "is a battery fitted" check downstream.
         ushort voltageMv = Convert.ToUInt16(frame.Fields["voltage_battery"]);
+        bool voltageKnown = voltageMv != ushort.MaxValue;
 
         // current in centiamps (10 mA units), -1 if unknown
         short currentRaw = Convert.ToInt16(frame.Fields["current_battery"]);
@@ -27,7 +31,7 @@ public sealed class SysStatusHandler : IMavlinkMessageHandler
         // remaining in percent, -1 if unknown
         sbyte remaining = Convert.ToSByte(frame.Fields["battery_remaining"]);
 
-        float voltage = voltageMv / 1000f;
+        float voltage = voltageKnown ? voltageMv / 1000f : 0f;
         float current = currentRaw >= 0 ? currentRaw / 100f : 0f;
 
         _onBattery(frame.SystemId,

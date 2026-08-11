@@ -80,16 +80,25 @@ public sealed class ParametersViewModel : ViewModelBase
     }
 
     private GCS.Core.Mavlink.VehicleKind _vehicleKind = GCS.Core.Mavlink.VehicleKind.Unknown;
+    private GCS.Core.Mavlink.AutopilotKind _autopilot = GCS.Core.Mavlink.AutopilotKind.Unknown;
 
     /// <summary>
     /// Narrow the list to the connected vehicle's parameters. A copter has no
     /// airspeed or Q-mode parameters and a plane has no ATC_/WPNAV_ ones; showing
     /// both leaves half the screen permanently blank and buries what does apply.
     /// </summary>
-    public void SetVehicleKind(GCS.Core.Mavlink.VehicleKind kind)
+    public void SetVehicleKind(
+        GCS.Core.Mavlink.VehicleKind kind,
+        GCS.Core.Mavlink.AutopilotKind autopilot = GCS.Core.Mavlink.AutopilotKind.Unknown)
     {
-        if (kind == _vehicleKind || kind == GCS.Core.Mavlink.VehicleKind.Unknown) return;
-        _vehicleKind = kind;
+        bool kindChanged = kind != _vehicleKind && kind != GCS.Core.Mavlink.VehicleKind.Unknown;
+        bool autopilotChanged = autopilot != _autopilot &&
+                                autopilot != GCS.Core.Mavlink.AutopilotKind.Unknown;
+
+        if (!kindChanged && !autopilotChanged) return;
+
+        if (kindChanged) _vehicleKind = kind;
+        if (autopilotChanged) _autopilot = autopilot;
 
         // Values already read are kept: rebuilding would discard them and the
         // vehicle would have to be re-interrogated for no reason.
@@ -97,7 +106,7 @@ public sealed class ParametersViewModel : ViewModelBase
             .ToDictionary(i => i.Name, StringComparer.OrdinalIgnoreCase);
 
         Items.Clear();
-        foreach (var def in ParameterCatalog.For(kind))
+        foreach (var def in ParameterCatalog.For(_autopilot, _vehicleKind))
         {
             var item = existing.TryGetValue(def.Name, out var kept)
                 ? kept

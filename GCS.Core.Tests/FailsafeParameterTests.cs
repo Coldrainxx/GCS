@@ -63,6 +63,46 @@ public class FailsafeParameterTests
     }
 
     [Fact]
+    public void Px4UsesItsOwnFailsafeParametersEntirely()
+    {
+        var px4 = FailsafeParameterSet.For(AutopilotKind.Px4, VehicleKind.Copter);
+
+        Assert.Equal("NAV_RCL_ACT", px4.RadioEnable);
+        Assert.Equal("NAV_DLL_ACT", px4.GcsEnable);
+        Assert.False(px4.HasShortLongActions);
+
+        // Battery is a remaining fraction on PX4, not volts and mAh.
+        Assert.Contains("BAT_LOW_THR", px4.AllNames());
+        Assert.DoesNotContain("BATT_LOW_VOLT", px4.AllNames());
+    }
+
+    [Fact]
+    public void TheThresholdFieldIsLabelledForTheFirmware()
+    {
+        // ArduPilot's field is a PWM level; PX4's is a timeout in seconds. Showing
+        // "FS PWM" above a seconds value would invite entering 1500.
+        Assert.Equal("FS PWM", FailsafeParameterSet.For(AutopilotKind.ArduPilot, VehicleKind.Plane).RadioThresholdLabel);
+        Assert.Contains("timeout", FailsafeParameterSet.For(AutopilotKind.Px4, VehicleKind.Copter).RadioThresholdLabel);
+    }
+
+    [Fact]
+    public void Px4NamesAreRecognisedOnReceive()
+    {
+        Assert.True(FailsafeParameterSet.IsRadioEnable("NAV_RCL_ACT"));
+        Assert.True(FailsafeParameterSet.IsGcsEnable("NAV_DLL_ACT"));
+        Assert.True(FailsafeParameterSet.IsRadioPwm("COM_RC_LOSS_T"));
+    }
+
+    [Fact]
+    public void ArduPilotSetIsUnchangedByTheAutopilotAxis()
+    {
+        // The single-argument overload is what existing callers use; it must keep
+        // meaning ArduPilot.
+        Assert.Equal(FailsafeParameterSet.For(AutopilotKind.ArduPilot, VehicleKind.Plane),
+                     FailsafeParameterSet.For(VehicleKind.Plane));
+    }
+
+    [Fact]
     public void UnrelatedParametersAreNotMisread()
     {
         Assert.False(FailsafeParameterSet.IsRadioEnable("BATT_LOW_VOLT"));

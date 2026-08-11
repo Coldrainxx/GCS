@@ -106,7 +106,8 @@
         <HeaderedContentControl Header="Radio" Style="{StaticResource GroupCard}">
             <StackPanel>
                 <Grid Margin="0,0,0,4">
-                    <TextBlock Text="FS Pwm" Style="{StaticResource Lbl}"/>
+                    <!-- A PWM level on ArduPilot, a loss timeout on PX4. -->
+                    <TextBlock Text="{Binding RadioThresholdLabel}" Style="{StaticResource Lbl}"/>
                     <TextBox Style="{StaticResource Num}"
                              Text="{Binding FsPwm, UpdateSourceTrigger=LostFocus, StringFormat=F0}"/>
                 </Grid>
@@ -129,6 +130,9 @@
             </StackPanel>
         </HeaderedContentControl>
 
+        <TextBlock Text="{Binding BatteryHint}" Foreground="{StaticResource Muted}"
+                   FontSize="11" TextWrapping="Wrap" Margin="2,4,0,0"
+                   Visibility="{Binding HasBatteryHint, Converter={StaticResource BoolToVisibilityConverter}}"/>
         <TextBlock Text="{Binding VehicleKindText}" Foreground="{StaticResource Muted}" FontSize="11" Margin="2,4,0,0"/>
         <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource Muted}" FontSize="12" Margin="2,2,0,0"/>
     </StackPanel>

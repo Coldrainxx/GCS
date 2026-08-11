@@ -43,12 +43,57 @@ public class TelemetryViewModel : ViewModelBase
     public float Heading { get => _heading; set => SetProperty(ref _heading, value); }
 
     public float Groundspeed { get => _groundspeed; set => SetProperty(ref _groundspeed, value); }
-    public float Airspeed { get => _airspeed; set => SetProperty(ref _airspeed, value); }
+    public float Airspeed
+    {
+        get => _airspeed;
+        set { if (SetProperty(ref _airspeed, value)) OnPropertyChanged(nameof(AirspeedText)); }
+    }
+
+    private bool _hasAirspeed = true;
+    public bool HasAirspeed
+    {
+        get => _hasAirspeed;
+        set { if (SetProperty(ref _hasAirspeed, value)) OnPropertyChanged(nameof(AirspeedText)); }
+    }
+
+    /// <summary>
+    /// Shows a dash when no airspeed sensor is fitted. Displaying 0.0 there would
+    /// read as a stalled aircraft rather than a missing instrument.
+    /// </summary>
+    public string AirspeedText => HasAirspeed ? _airspeed.ToString("F1") : "—";
     public float ClimbRate { get => _climbRate; set => SetProperty(ref _climbRate, value); }
 
-    public float Voltage { get => _voltage; set => SetProperty(ref _voltage, value); }
+    public float Voltage
+    {
+        get => _voltage;
+        set { if (SetProperty(ref _voltage, value)) NotifyBattery(); }
+    }
+
     public float Current { get => _current; set => SetProperty(ref _current, value); }
-    public int BatteryRemaining { get => _batteryRemaining; set => SetProperty(ref _batteryRemaining, value); }
+
+    public int BatteryRemaining
+    {
+        get => _batteryRemaining;
+        set { if (SetProperty(ref _batteryRemaining, value)) NotifyBattery(); }
+    }
+
+    private void NotifyBattery()
+    {
+        OnPropertyChanged(nameof(HasBattery));
+        OnPropertyChanged(nameof(VoltageText));
+        OnPropertyChanged(nameof(RemainingText));
+    }
+
+    /// <summary>
+    /// False when no pack is being measured — a USB-powered board reports the
+    /// "unknown" sentinels rather than zero.
+    /// </summary>
+    public bool HasBattery => _voltage >= GCS.Core.Advisor.FlightHealthAnalyzer.MinPlausiblePackVolts;
+
+    public string VoltageText => HasBattery ? _voltage.ToString("F2") : "—";
+
+    /// <summary>Percentage is -1 when the autopilot has no estimate of it.</summary>
+    public string RemainingText => _batteryRemaining > 0 ? _batteryRemaining.ToString() : "—";
 
     public byte GpsFixType
     {
@@ -132,6 +177,7 @@ public class TelemetryViewModel : ViewModelBase
         {
             Groundspeed = state.VfrHud.GroundspeedMps;
             Airspeed = state.VfrHud.AirspeedMps;
+            HasAirspeed = state.VfrHud.HasAirspeed;
             ClimbRate = state.VfrHud.ClimbMps;
         }
 

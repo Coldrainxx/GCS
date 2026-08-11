@@ -16,6 +16,14 @@ public abstract class TransportBase : ITransport
     public abstract Task StopAsync();
     public abstract Task SendAsync(ReadOnlyMemory<byte> data, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// One address serves every vehicle on a serial link or a single TCP socket,
+    /// so the target is ignored unless a transport says otherwise.
+    /// </summary>
+    public virtual Task SendToAsync(
+        ReadOnlyMemory<byte> data, byte targetSystemId, CancellationToken cancellationToken)
+        => SendAsync(data, cancellationToken);
+
     protected void RaiseData(ReadOnlyMemory<byte> data)
         => DataReceived?.Invoke(data);
 

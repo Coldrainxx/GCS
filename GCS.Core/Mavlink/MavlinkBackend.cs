@@ -43,6 +43,8 @@ public sealed class MavlinkBackend : IMavlinkBackend
     private const byte GcsCompId = 190; // MAV_COMP_ID_MISSIONPLANNER
     private const ushort MAV_CMD_COMPONENT_ARM_DISARM = 400;
     private const ushort MAV_CMD_SET_MESSAGE_INTERVAL = 511;
+    private const ushort MAV_CMD_DO_SET_MODE = 176;
+    private const float MavModeFlagCustomModeEnabled = 1f;
 
     // ═══════════════════════════════════════════════════════════════
     // Events - Telemetry
@@ -191,6 +193,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
             // Health telemetry (streamed only after RequestHealthStreamsAsync).
             new VibrationHandler((sys, s) => VibrationReceived?.Invoke(sys, s)),
             new EkfStatusHandler((sys, s) => EkfStatusReceived?.Invoke(sys, s)),
+            new EstimatorStatusHandler((sys, s) => EkfStatusReceived?.Invoke(sys, s)),
             new BatteryStatusHandler((sys, s) => BatteryStatusReceived?.Invoke(sys, s)),
             new PowerStatusHandler((sys, s) => PowerStatusReceived?.Invoke(sys, s)),
             // Message handlers
@@ -293,11 +296,18 @@ public sealed class MavlinkBackend : IMavlinkBackend
         }
     }
 
-    /// <summary>Single TX funnel so every outgoing packet is also logged.</summary>
-    private async Task SendPacketAsync(ReadOnlyMemory<byte> data, CancellationToken ct)
+    /// <summary>
+    /// Single TX funnel so every outgoing packet is also logged.
+    ///
+    /// The destination system is passed on to the transport: a UDP link with each
+    /// drone on its own IP needs it to send to the right one. Links where every
+    /// vehicle shares one address ignore it.
+    /// </summary>
+    private async Task SendPacketAsync(
+        ReadOnlyMemory<byte> data, byte targetSystemId, CancellationToken ct)
     {
         RawFrameSent?.Invoke(data);
-        await _transport.SendAsync(data, ct);
+        await _transport.SendToAsync(data, targetSystemId, ct);
     }
 
     private void OnTransportError(Exception ex)
@@ -363,7 +373,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
             p1: param1, p2: param2, p3: param3, p4: param4,
             p5: param5, p6: param6, p7: param7);
 
-        await SendPacketAsync(packet, ct);
+        await SendPacketAsync(packet, sys, ct);
     }
 
     /// <summary>
@@ -391,7 +401,12 @@ public sealed class MavlinkBackend : IMavlinkBackend
     /// is the modern per-message equivalent. Sending both costs a handful of packets
     /// once per connection and covers old and new firmware alike.
     /// </summary>
-    public async Task RequestTelemetryStreamsAsync(byte targetSystem = 0, CancellationToken ct = default)
+    public Task RequestTelemetryStreamsAsync(byte targetSystem = 0, CancellationToken ct = default) =>
+        RequestTelemetryStreamsAsync(AutopilotKind.Unknown, targetSystem, ct);
+
+    /// <inheritdoc cref="RequestTelemetryStreamsAsync(byte, CancellationToken)"/>
+    public async Task RequestTelemetryStreamsAsync(
+        AutopilotKind autopilot, byte targetSystem = 0, CancellationToken ct = default)
     {
         var (sys, comp) = ResolveTarget(targetSystem);
 
@@ -413,7 +428,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
             {
                 await SendPacketAsync(
                     Mavlink2Serializer.RequestDataStream(sys, comp, GcsSysId, GcsCompId, id, rate),
-                    ct);
+                    sys, ct);
                 await Task.Delay(40, ct);
             }
             catch (OperationCanceledException) { throw; }
@@ -427,7 +442,8 @@ public sealed class MavlinkBackend : IMavlinkBackend
         // the modern mechanism.
         var core = new (uint Id, int IntervalUs)[]
         {
-            (0, 1_000_000),    // HEARTBEAT
+            // HEARTBEAT is sent unconditionally by both firmwares and PX4 refuses to
+            // have its interval set, so it is not requested.
             (1, 500_000),      // SYS_STATUS
             (24, 500_000),     // GPS_RAW_INT
             (30, 250_000),     // ATTITUDE
@@ -450,23 +466,43 @@ public sealed class MavlinkBackend : IMavlinkBackend
             }
         }
 
-        await RequestHealthStreamsAsync(targetSystem, ct);
+        await RequestHealthStreamsAsync(autopilot, targetSystem, ct);
     }
 
-    public async Task RequestHealthStreamsAsync(byte targetSystem = 0, CancellationToken ct = default)
+    public async Task RequestHealthStreamsAsync(byte targetSystem = 0, CancellationToken ct = default) =>
+        await RequestHealthStreamsAsync(AutopilotKind.Unknown, targetSystem, ct);
+
+    /// <param name="autopilot">
+    /// Skips messages the firmware does not implement. PX4 answered FAILED to the
+    /// ArduPilot-only requests, which is harmless but wastes commands on a slow link
+    /// and fills the log with failures that look like a problem.
+    /// </param>
+    public async Task RequestHealthStreamsAsync(
+        AutopilotKind autopilot, byte targetSystem = 0, CancellationToken ct = default)
     {
+        bool px4 = autopilot == AutopilotKind.Px4;
+
         // (message id, interval in microseconds)
-        var wanted = new (uint Id, int IntervalUs)[]
+        var wanted = new List<(uint Id, int IntervalUs)>
         {
-            (241, 500_000),    // VIBRATION            2 Hz
-            (193, 500_000),    // EKF_STATUS_REPORT    2 Hz
+            (241, 500_000),    // VIBRATION            2 Hz — both
             (36,  500_000),    // SERVO_OUTPUT_RAW     2 Hz — motor balance
-            (147, 1_000_000),  // BATTERY_STATUS       1 Hz
-            (125, 1_000_000),  // POWER_STATUS         1 Hz
-            (Messages.EscTelemetryHandler.Block1To4,  1_000_000),  // 1 Hz
-            (Messages.EscTelemetryHandler.Block5To8,  1_000_000),
-            (Messages.EscTelemetryHandler.Block9To12, 1_000_000),
+            (147, 1_000_000),  // BATTERY_STATUS       1 Hz — both
         };
+
+        if (px4)
+        {
+            wanted.Add((230, 500_000));    // ESTIMATOR_STATUS
+        }
+        else
+        {
+            wanted.Add((193, 500_000));    // EKF_STATUS_REPORT
+            wanted.Add((230, 500_000));    // ESTIMATOR_STATUS — some builds send both
+            wanted.Add((125, 1_000_000));  // POWER_STATUS  (ArduPilot)
+            wanted.Add((Messages.EscTelemetryHandler.Block1To4, 1_000_000));
+            wanted.Add((Messages.EscTelemetryHandler.Block5To8, 1_000_000));
+            wanted.Add((Messages.EscTelemetryHandler.Block9To12, 1_000_000));
+        }
 
         foreach (var (id, interval) in wanted)
         {
@@ -490,6 +526,35 @@ public sealed class MavlinkBackend : IMavlinkBackend
         }
     }
 
+    /// <summary>
+    /// Command a mode, using whichever mechanism the firmware understands.
+    ///
+    /// ArduPilot takes SET_MODE with a flat custom_mode. PX4 needs
+    /// MAV_CMD_DO_SET_MODE carrying its main and sub mode as separate parameters —
+    /// a packed custom_mode sent through SET_MODE is not accepted.
+    /// </summary>
+    public Task SendFlightModeAsync(
+        FlightModeChoice mode,
+        AutopilotKind autopilot,
+        bool isArmed,
+        byte targetSystem = 0,
+        CancellationToken ct = default)
+    {
+        if (autopilot == AutopilotKind.Px4)
+        {
+            return SendCommandLongAsync(
+                MAV_CMD_DO_SET_MODE,
+                param1: MavModeFlagCustomModeEnabled,
+                param2: mode.Px4MainMode,
+                param3: mode.Px4SubMode,
+                targetSystem: targetSystem,
+                ct: ct);
+        }
+
+        byte baseMode = (byte)(isArmed ? 0xD1 : 0x51);
+        return SendSetModeAsync(baseMode, mode.CustomMode, targetSystem, ct);
+    }
+
     public async Task SendSetModeAsync(
         byte baseMode,
         uint customMode,
@@ -506,7 +571,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
             baseMode: baseMode,
             customMode: customMode);
 
-        await SendPacketAsync(packet, ct);
+        await SendPacketAsync(packet, sys, ct);
     }
 
     public async Task SendArmDisarmAsync(bool arm, byte targetSystem = 0, CancellationToken ct = default)
@@ -548,13 +613,26 @@ public sealed class MavlinkBackend : IMavlinkBackend
                 ["z"] = altitudeMeters
             });
 
-        await SendPacketAsync(packet, ct);
+        await SendPacketAsync(packet, sys, ct);
         Debug.WriteLine($"[MavlinkBackend] Guided goto {latitudeDeg:F6},{longitudeDeg:F6} @ {altitudeMeters}m");
     }
 
+    /// <summary>
+    /// Send a packet built elsewhere — mission upload and download.
+    ///
+    /// Those addressed the primary vehicle when they were built (via
+    /// <see cref="SystemId"/>), so that is where the packet is routed.
+    /// </summary>
     public async Task SendRawAsync(ReadOnlyMemory<byte> packet, CancellationToken ct = default)
     {
-        await SendPacketAsync(packet, ct);
+        await SendPacketAsync(packet, _connection.SystemId, ct);
+    }
+
+    /// <inheritdoc/>
+    public async Task SendRawToAsync(
+        ReadOnlyMemory<byte> packet, byte targetSystem, CancellationToken ct = default)
+    {
+        await SendPacketAsync(packet, targetSystem, ct);
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -574,7 +652,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
             paramId: paramId,
             value: value);
 
-        await SendPacketAsync(packet, ct);
+        await SendPacketAsync(packet, sys, ct);
 
         Debug.WriteLine($"[MavlinkBackend] SetParameter: {paramId} = {value}");
     }
@@ -591,7 +669,7 @@ public sealed class MavlinkBackend : IMavlinkBackend
             senderComp: GcsCompId,
             paramId: paramId);
 
-        await SendPacketAsync(packet, ct);
+        await SendPacketAsync(packet, sys, ct);
 
         Debug.WriteLine($"[MavlinkBackend] RequestParameter: {paramId}");
     }

@@ -90,6 +90,15 @@ public static class ParameterCatalog
     private static readonly string[] CopterOnlyGroups =
         { CopterFrame, CopterFs, CopterFlight, CopterPid };
 
+    // ── PX4 groups ───────────────────────────────────────────────────
+    private const string Px4System = "PX4 system";
+    private const string Px4Fs = "PX4 failsafe";
+    private const string Px4Flight = "PX4 flight";
+    private const string Px4Pid = "PX4 rate control";
+
+    private static readonly string[] Px4Groups =
+        { Px4System, Px4Fs, Px4Flight, Px4Pid };
+
     /// <summary>Whether a group applies to this vehicle. Unknown shows everything.</summary>
     public static bool AppliesTo(string group, GCS.Core.Mavlink.VehicleKind kind) => kind switch
     {
@@ -101,6 +110,22 @@ public static class ParameterCatalog
     /// <summary>The catalogue filtered to one vehicle family.</summary>
     public static IReadOnlyList<ParameterDef> For(GCS.Core.Mavlink.VehicleKind kind) =>
         All.Where(p => AppliesTo(p.Group, kind)).ToList();
+
+    /// <summary>
+    /// The catalogue for a firmware and airframe.
+    ///
+    /// PX4 shares no parameter names with ArduPilot, so the two sets are disjoint
+    /// rather than filtered — showing ArduPilot names to a PX4 vehicle leaves the
+    /// whole screen blank, which reads as a broken connection.
+    /// </summary>
+    public static IReadOnlyList<ParameterDef> For(
+        GCS.Core.Mavlink.AutopilotKind autopilot, GCS.Core.Mavlink.VehicleKind kind)
+    {
+        if (autopilot == GCS.Core.Mavlink.AutopilotKind.Px4)
+            return All.Where(p => Px4Groups.Contains(p.Group)).ToList();
+
+        return All.Where(p => !Px4Groups.Contains(p.Group) && AppliesTo(p.Group, kind)).ToList();
+    }
 
     public static readonly IReadOnlyList<ParameterDef> All = new List<ParameterDef>
     {
@@ -364,5 +389,54 @@ public static class ParameterCatalog
         new(new[]{ "ATC_ACCEL_R_MAX" }, CopterPid, "Roll accel max", "Maximum roll acceleration.") { Units="cdeg/s/s", Decimals=0, Min=0, Max=180000 },
         new(new[]{ "ATC_ACCEL_P_MAX" }, CopterPid, "Pitch accel max", "Maximum pitch acceleration.") { Units="cdeg/s/s", Decimals=0, Min=0, Max=180000 },
         new(new[]{ "ATC_ACCEL_Y_MAX" }, CopterPid, "Yaw accel max", "Maximum yaw acceleration.") { Units="cdeg/s/s", Decimals=0, Min=0, Max=72000 },
+
+        // ══ PX4 ══════════════════════════════════════════════════════
+        // A disjoint set: PX4 shares no parameter names with ArduPilot. Shown only
+        // when the heartbeat reports PX4 firmware.
+
+        // ── System ───────────────────────────────────────────────────
+        new(new[]{ "MAV_SYS_ID" }, Px4System, "System ID", "MAVLink system id of this vehicle.") { Decimals=0, Min=1, Max=250 },
+        new(new[]{ "SYS_AUTOSTART" }, Px4System, "Airframe", "Airframe configuration id.") { Decimals=0, Min=0, Max=1000000 },
+        new(new[]{ "COM_ARM_WO_GPS" }, Px4System, "Arm without GPS", "Allow arming with no position estimate.") { Decimals=0, Min=0, Max=1 },
+        new(new[]{ "COM_DISARM_LAND" }, Px4System, "Disarm after landing", "Seconds after landing before auto-disarm.") { Units="s", Decimals=1, Min=0, Max=20 },
+        new(new[]{ "COM_PREARM_MODE" }, Px4System, "Prearm mode", "When prearm checks are allowed to pass.") { Decimals=0, Min=0, Max=2 },
+        new(new[]{ "CBRK_SUPPLY_CHK" }, Px4System, "Power check bypass", "Circuit breaker for the power supply check.") { Decimals=0, Min=0, Max=894281 },
+
+        // ── Failsafe ─────────────────────────────────────────────────
+        new(new[]{ "NAV_RCL_ACT" }, Px4Fs, "RC loss action", "What to do when the RC link is lost.") { Decimals=0, Min=0, Max=6 },
+        new(new[]{ "NAV_DLL_ACT" }, Px4Fs, "Data link loss action", "What to do when the GCS link is lost.") { Decimals=0, Min=0, Max=6 },
+        new(new[]{ "COM_RC_LOSS_T" }, Px4Fs, "RC loss timeout", "Seconds without RC before the failsafe triggers.") { Units="s", Decimals=1, Min=0, Max=35 },
+        new(new[]{ "COM_DL_LOSS_T" }, Px4Fs, "Data link timeout", "Seconds without a GCS before the failsafe triggers.") { Units="s", Decimals=0, Min=0, Max=100 },
+        new(new[]{ "BAT_LOW_THR" }, Px4Fs, "Low battery threshold", "Remaining fraction counted as low.") { Decimals=2, Min=0.05, Max=0.5 },
+        new(new[]{ "BAT_CRIT_THR" }, Px4Fs, "Critical battery threshold", "Remaining fraction counted as critical.") { Decimals=2, Min=0.05, Max=0.5 },
+        new(new[]{ "BAT_EMERGEN_THR" }, Px4Fs, "Emergency battery threshold", "Remaining fraction counted as an emergency.") { Decimals=2, Min=0.03, Max=0.5 },
+        new(new[]{ "COM_LOW_BAT_ACT" }, Px4Fs, "Low battery action", "Response to a low battery.") { Decimals=0, Min=0, Max=3 },
+        new(new[]{ "GF_ACTION" }, Px4Fs, "Geofence action", "Response to breaching the geofence.") { Decimals=0, Min=0, Max=5 },
+        new(new[]{ "COM_POS_FS_EPH" }, Px4Fs, "Position failsafe radius", "Horizontal accuracy beyond which position is unusable.") { Units="m", Decimals=1, Min=0, Max=1000 },
+
+        // ── Flight limits ────────────────────────────────────────────
+        new(new[]{ "MPC_XY_VEL_MAX" }, Px4Flight, "Max horizontal speed", "Fastest horizontal speed in position control.") { Units="m/s", Decimals=1, Min=0, Max=20 },
+        new(new[]{ "MPC_Z_VEL_MAX_UP" }, Px4Flight, "Max climb rate", "Fastest commanded climb.") { Units="m/s", Decimals=1, Min=0.5, Max=8 },
+        new(new[]{ "MPC_Z_VEL_MAX_DN" }, Px4Flight, "Max descent rate", "Fastest commanded descent.") { Units="m/s", Decimals=1, Min=0.5, Max=4 },
+        new(new[]{ "MPC_TILTMAX_AIR" }, Px4Flight, "Max tilt angle", "Largest lean angle in flight.") { Units="deg", Decimals=0, Min=20, Max=89 },
+        new(new[]{ "MPC_THR_HOVER" }, Px4Flight, "Hover throttle", "Throttle needed to hover.") { Decimals=2, Min=0.1, Max=0.8 },
+        new(new[]{ "MIS_TAKEOFF_ALT" }, Px4Flight, "Takeoff altitude", "Altitude climbed to on takeoff.") { Units="m", Decimals=1, Min=0, Max=80 },
+        new(new[]{ "RTL_RETURN_ALT" }, Px4Flight, "Return altitude", "Altitude climbed to before returning home.") { Units="m", Decimals=1, Min=0, Max=150 },
+        new(new[]{ "RTL_DESCEND_ALT" }, Px4Flight, "Return descend altitude", "Altitude descended to above home before landing.") { Units="m", Decimals=1, Min=2, Max=100 },
+        new(new[]{ "MPC_LAND_SPEED" }, Px4Flight, "Landing speed", "Descent rate for the final landing phase.") { Units="m/s", Decimals=1, Min=0.6, Max=5 },
+        new(new[]{ "NAV_ACC_RAD" }, Px4Flight, "Waypoint radius", "Distance at which a waypoint counts as reached.") { Units="m", Decimals=1, Min=0.05, Max=200 },
+
+        // ── Rate control ─────────────────────────────────────────────
+        new(new[]{ "MC_ROLLRATE_P" }, Px4Pid, "Roll rate P", "Roll rate controller P gain.") { Decimals=3, Min=0.01, Max=0.5 },
+        new(new[]{ "MC_ROLLRATE_I" }, Px4Pid, "Roll rate I", "Roll rate controller I gain.") { Decimals=3, Min=0, Max=1 },
+        new(new[]{ "MC_ROLLRATE_D" }, Px4Pid, "Roll rate D", "Roll rate controller D gain.") { Decimals=4, Min=0, Max=0.01 },
+        new(new[]{ "MC_PITCHRATE_P" }, Px4Pid, "Pitch rate P", "Pitch rate controller P gain.") { Decimals=3, Min=0.01, Max=0.6 },
+        new(new[]{ "MC_PITCHRATE_I" }, Px4Pid, "Pitch rate I", "Pitch rate controller I gain.") { Decimals=3, Min=0, Max=1 },
+        new(new[]{ "MC_PITCHRATE_D" }, Px4Pid, "Pitch rate D", "Pitch rate controller D gain.") { Decimals=4, Min=0, Max=0.01 },
+        new(new[]{ "MC_YAWRATE_P" }, Px4Pid, "Yaw rate P", "Yaw rate controller P gain.") { Decimals=3, Min=0, Max=0.6 },
+        new(new[]{ "MC_YAWRATE_I" }, Px4Pid, "Yaw rate I", "Yaw rate controller I gain.") { Decimals=3, Min=0, Max=1 },
+        new(new[]{ "MC_ROLL_P" }, Px4Pid, "Roll angle P", "Roll attitude controller gain.") { Decimals=2, Min=0, Max=12 },
+        new(new[]{ "MC_PITCH_P" }, Px4Pid, "Pitch angle P", "Pitch attitude controller gain.") { Decimals=2, Min=0, Max=12 },
+        new(new[]{ "MC_YAW_P" }, Px4Pid, "Yaw angle P", "Yaw attitude controller gain.") { Decimals=2, Min=0, Max=5 },
     };
 }

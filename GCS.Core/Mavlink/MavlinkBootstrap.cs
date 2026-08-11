@@ -69,7 +69,8 @@ public static class MavlinkBootstrap
             // backend asks for them on connect — see RequestHealthStreamsAsync.
             125, // POWER_STATUS
             147, // BATTERY_STATUS      (per-cell, consumed mAh, temperature)
-            193, // EKF_STATUS_REPORT
+            193, // EKF_STATUS_REPORT   (ArduPilot)
+            230, // ESTIMATOR_STATUS    (PX4's equivalent)
             241, // VIBRATION
             // ESC telemetry lives at 11030+ in ArduPilot's dialect. The 291-293
             // range is a different message set in Common — using it would have
@@ -77,6 +78,10 @@ public static class MavlinkBootstrap
             11030, // ESC_TELEMETRY_1_TO_4
             11031, // ESC_TELEMETRY_5_TO_8
             11032, // ESC_TELEMETRY_9_TO_12
+
+            // PX4 Follow-Me: the GCS streams the leader's position and each
+            // follower holds a station around it. See FollowTargetRelay.
+            144, // FOLLOW_TARGET
 
             75,  // COMMAND_INT (guided goto / DO_REPOSITION)
             76,  // COMMAND_LONG

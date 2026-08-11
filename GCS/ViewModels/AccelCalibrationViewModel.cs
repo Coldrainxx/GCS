@@ -55,7 +55,11 @@ public sealed class AccelCalibrationViewModel : ViewModelBase
     }
 
     private int _step;                       // 0 = not started; 1..6 = current orientation
-    public string StepText => IsCalibrating ? $"Step {_step} of 6 — {Steps[_step - 1].Name}" : "";
+    public string StepText =>
+        !IsCalibrating ? ""
+        // PX4 has no fixed step order: it detects whichever side it is shown next.
+        : IsPx4 ? (_px4.Pending.Count > 0 ? $"{_px4.Pending.Count} position(s) remaining" : _px4.Sensor)
+        : $"Step {_step} of 6 — {Steps[_step - 1].Name}";
 
     private string _instruction = "Press \"Start Accel Cal\" to begin the 6-point calibration.";
     public string Instruction
@@ -103,13 +107,74 @@ public sealed class AccelCalibrationViewModel : ViewModelBase
     private async Task StartAsync()
     {
         Log.Clear();
-        _step = 1;
         IsCalibrating = true;
+
+        if (IsPx4)
+        {
+            // PX4 runs the whole procedure itself and reports through STATUSTEXT,
+            // detecting each orientation rather than being told. There is no
+            // per-position command to send, so the Next button does not apply.
+            _px4 = GCS.Core.Mavlink.Px4CalibrationState.Idle;
+            _step = 0;
+            OnPropertyChanged(nameof(StepText));
+            Instruction = "Follow the prompts — PX4 detects each position itself.";
+            Status = "Accelerometer calibration started.";
+
+            var p = GCS.Core.Mavlink.Px4CalibrationCommands.Accelerometer;
+            await _sendCommand(MAV_CMD_PREFLIGHT_CALIBRATION, p.P1, p.P2, p.P3, p.P4, p.P5, p.P6, p.P7);
+            return;
+        }
+
+        _step = 1;
         OnPropertyChanged(nameof(StepText));
         Instruction = Steps[0].Instruction;
         Status = "Accelerometer calibration started.";
         // param5 = 1 => full accelerometer (6-point) calibration.
         await _sendCommand(MAV_CMD_PREFLIGHT_CALIBRATION, 0, 0, 0, 0, 1, 0, 0);
+    }
+
+    // ── PX4 ─────────────────────────────────────────────────────────
+
+    private GCS.Core.Mavlink.AutopilotKind _autopilot = GCS.Core.Mavlink.AutopilotKind.Unknown;
+    private GCS.Core.Mavlink.Px4CalibrationState _px4 = GCS.Core.Mavlink.Px4CalibrationState.Idle;
+
+    public bool IsPx4 => _autopilot == GCS.Core.Mavlink.AutopilotKind.Px4;
+
+    /// <summary>PX4 advances itself, so the manual step button is hidden for it.</summary>
+    public bool ShowNextButton => !IsPx4;
+
+    public void SetAutopilot(GCS.Core.Mavlink.AutopilotKind autopilot)
+    {
+        if (autopilot == _autopilot || autopilot == GCS.Core.Mavlink.AutopilotKind.Unknown) return;
+
+        _autopilot = autopilot;
+        OnPropertyChanged(nameof(IsPx4));
+        OnPropertyChanged(nameof(ShowNextButton));
+        OnPropertyChanged(nameof(StepText));
+    }
+
+    /// <summary>
+    /// Feed PX4's calibration status messages in. Ignored entirely on ArduPilot,
+    /// which is driven by commands instead.
+    /// </summary>
+    public void OnStatusText(string text)
+    {
+        if (!IsPx4 || !GCS.Core.Mavlink.Px4CalibrationParser.IsCalibrationMessage(text)) return;
+
+        _px4 = GCS.Core.Mavlink.Px4CalibrationParser.Apply(_px4, text);
+
+        Log.Add(text);
+        while (Log.Count > 40) Log.RemoveAt(0);
+
+        Instruction = _px4.Instruction;
+        Status = _px4.Message;
+        OnPropertyChanged(nameof(StepText));
+
+        if (_px4.Phase is GCS.Core.Mavlink.Px4CalibrationPhase.Done
+                       or GCS.Core.Mavlink.Px4CalibrationPhase.Failed)
+        {
+            IsCalibrating = false;
+        }
     }
 
     private async Task NextAsync()

@@ -105,6 +105,38 @@ public sealed class EkfStatusHandler : IMavlinkMessageHandler
     }
 }
 
+/// <summary>
+/// ESTIMATOR_STATUS (msg 230) — PX4's equivalent of ArduPilot's EKF_STATUS_REPORT.
+/// Mapped onto the same state so the health rules do not need a second code path.
+/// </summary>
+public sealed class EstimatorStatusHandler : IMavlinkMessageHandler
+{
+    public uint MessageId => 230;
+    private readonly Action<byte, EkfStatusState> _onEkf;
+
+    public EstimatorStatusHandler(Action<byte, EkfStatusState> onEkf) => _onEkf = onEkf;
+
+    public void Handle(Frame frame)
+    {
+        try
+        {
+            // ESTIMATOR_STATUS_FLAGS uses different bits from EKF_STATUS_FLAGS, so
+            // flags are not forwarded — only the variances, which mean the same
+            // thing and drive the thresholds. Passing 0 keeps the flag checks
+            // inactive rather than misreading PX4's bits as ArduPilot's.
+            _onEkf(frame.SystemId, new EkfStatusState(
+                Flags: 0,
+                VelocityVariance: FrameFields.F32(frame, "vel_ratio"),
+                PosHorizVariance: FrameFields.F32(frame, "pos_horiz_ratio"),
+                PosVertVariance: FrameFields.F32(frame, "pos_vert_ratio"),
+                CompassVariance: FrameFields.F32(frame, "mag_ratio"),
+                TerrainAltVariance: FrameFields.F32(frame, "hagl_ratio"),
+                TimestampUtc: DateTime.UtcNow));
+        }
+        catch (Exception ex) { Debug.WriteLine($"[EstimatorStatus] {ex.Message}"); }
+    }
+}
+
 /// <summary>BATTERY_STATUS (msg 147).</summary>
 public sealed class BatteryStatusHandler : IMavlinkMessageHandler
 {

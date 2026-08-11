@@ -92,6 +92,7 @@ public sealed class SetupViewModel : ViewModelBase
     }
 
     private GCS.Core.Mavlink.VehicleKind _vehicleKind = GCS.Core.Mavlink.VehicleKind.Unknown;
+    private GCS.Core.Mavlink.AutopilotKind _autopilot = GCS.Core.Mavlink.AutopilotKind.Unknown;
 
     /// <summary>
     /// Hide the tuning screens that write plane-only parameters.
@@ -102,16 +103,32 @@ public sealed class SetupViewModel : ViewModelBase
     /// Calibration, radio, compass, ESC and flight-mode screens are vehicle-agnostic
     /// and stay.
     /// </summary>
-    public void SetVehicleKind(GCS.Core.Mavlink.VehicleKind kind)
+    public void SetVehicleKind(
+        GCS.Core.Mavlink.VehicleKind kind,
+        GCS.Core.Mavlink.AutopilotKind autopilot = GCS.Core.Mavlink.AutopilotKind.Unknown)
     {
-        if (kind == _vehicleKind || kind == GCS.Core.Mavlink.VehicleKind.Unknown) return;
-        _vehicleKind = kind;
+        bool kindChanged = kind != _vehicleKind && kind != GCS.Core.Mavlink.VehicleKind.Unknown;
+        bool autopilotChanged = autopilot != _autopilot &&
+                                autopilot != GCS.Core.Mavlink.AutopilotKind.Unknown;
+
+        if (!kindChanged && !autopilotChanged) return;
+
+        if (kindChanged) _vehicleKind = kind;
+        if (autopilotChanged) _autopilot = autopilot;
 
         // FLTMODE1-6 exist on every vehicle but hold different mode numbers, so the
         // choices offered have to match the connected aircraft.
-        FlightModes.SetVehicleKind(kind);
+        FlightModes.SetVehicleKind(_vehicleKind);
 
-        bool isPlane = kind == GCS.Core.Mavlink.VehicleKind.Plane;
+        // PX4 calibrates by detecting orientations itself rather than being told,
+        // so that screen changes shape too.
+        AccelCal.SetAutopilot(_autopilot);
+        Compass.SetAutopilot(_autopilot);
+
+        // The tuning screens edit ArduPilot parameters, so they apply only to an
+        // ArduPlane. PX4's equivalents live in the PARAMS screen.
+        bool isPlane = _autopilot != GCS.Core.Mavlink.AutopilotKind.Px4 &&
+                       _vehicleKind == GCS.Core.Mavlink.VehicleKind.Plane;
 
         foreach (var name in new[] { "Basic Tuning", "Extended Tuning" })
         {
@@ -199,6 +216,11 @@ public sealed class SetupViewModel : ViewModelBase
     public void OnMessage(AutopilotMessage message)
     {
         AccelCal.OnMessage(message);
+
+        // PX4 drives calibration entirely through STATUSTEXT, so the same stream
+        // that feeds the message log also advances the calibration screen.
+        AccelCal.OnStatusText(message.Text);
+        Compass.OnStatusText(message.Text);
     }
 
     public void OnMagCalProgress(MagCalProgressData data) => Compass.OnProgress(data);

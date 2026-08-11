@@ -31,6 +31,17 @@ public interface IMavlinkBackend : IDisposable
     event Action<byte, PowerStatusState>? PowerStatusReceived;
     event Action<byte, EscTelemetryState>? EscTelemetryReceived;
 
+    /// <summary>
+    /// Command a flight mode using whichever mechanism the firmware understands
+    /// (SET_MODE for ArduPilot, DO_SET_MODE for PX4).
+    /// </summary>
+    Task SendFlightModeAsync(
+        FlightModeChoice mode,
+        AutopilotKind autopilot,
+        bool isArmed,
+        byte targetSystem = 0,
+        CancellationToken ct = default);
+
     /// <summary>Ask the autopilot to start streaming the health messages.</summary>
     Task RequestHealthStreamsAsync(byte targetSystem = 0, CancellationToken ct = default);
 
@@ -39,6 +50,13 @@ public interface IMavlinkBackend : IDisposable
     /// SRn_* rates are zero sends only heartbeats.
     /// </summary>
     Task RequestTelemetryStreamsAsync(byte targetSystem = 0, CancellationToken ct = default);
+
+    /// <summary>
+    /// As above, but skipping messages the firmware does not implement — PX4 answers
+    /// FAILED to the ArduPilot-only ones.
+    /// </summary>
+    Task RequestTelemetryStreamsAsync(
+        AutopilotKind autopilot, byte targetSystem = 0, CancellationToken ct = default);
 
     /// <summary>Raw complete MAVLink packets, for telemetry logging (RX / TX).</summary>
     event Action<ReadOnlyMemory<byte>>? RawFrameReceived;
@@ -151,5 +169,17 @@ public interface IMavlinkBackend : IDisposable
 
     Task SendRawAsync(
         ReadOnlyMemory<byte> packet,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Send a pre-built packet to one vehicle.
+    ///
+    /// For messages that carry no target_system of their own — FOLLOW_TARGET is
+    /// the one that matters here — the destination is the only thing deciding
+    /// which aircraft acts on it.
+    /// </summary>
+    Task SendRawToAsync(
+        ReadOnlyMemory<byte> packet,
+        byte targetSystem,
         CancellationToken ct = default);
 }

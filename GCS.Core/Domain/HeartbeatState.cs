@@ -11,5 +11,9 @@ public record HeartbeatState(
     // travels with the heartbeat. Mode above stays plane-typed and is null for
     // other families — display should prefer ModeName.
     Mavlink.VehicleKind Kind = Mavlink.VehicleKind.Unknown,
-    string? ModeName = null
+    string? ModeName = null,
+
+    // Which firmware: PX4 encodes modes differently and needs a different command
+    // to change them, so this decides more than just naming.
+    Mavlink.AutopilotKind Autopilot = Mavlink.AutopilotKind.Unknown
 );

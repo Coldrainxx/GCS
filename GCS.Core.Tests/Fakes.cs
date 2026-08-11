@@ -65,12 +65,32 @@ internal sealed class FakeBackend : IMavlinkBackend
         return Task.CompletedTask;
     }
 
+    /// <summary>Last mode command, so tests can assert which mechanism was used.</summary>
+    public (FlightModeChoice Mode, AutopilotKind Autopilot, bool Armed)? LastFlightMode { get; private set; }
+
+    public Task SendFlightModeAsync(
+        FlightModeChoice mode, AutopilotKind autopilot, bool isArmed,
+        byte targetSystem = 0, CancellationToken ct = default)
+    {
+        LastFlightMode = (mode, autopilot, isArmed);
+        return Task.CompletedTask;
+    }
+
     public int TelemetryStreamRequests { get; private set; }
 
     public Task RequestTelemetryStreamsAsync(byte targetSystem = 0, CancellationToken ct = default)
     {
         TelemetryStreamRequests++;
         return Task.CompletedTask;
+    }
+
+    public AutopilotKind LastStreamRequestAutopilot { get; private set; } = AutopilotKind.Unknown;
+
+    public Task RequestTelemetryStreamsAsync(
+        AutopilotKind autopilot, byte targetSystem = 0, CancellationToken ct = default)
+    {
+        LastStreamRequestAutopilot = autopilot;
+        return RequestTelemetryStreamsAsync(targetSystem, ct);
     }
 
     // Raise the health events from tests.
@@ -130,6 +150,9 @@ internal sealed class FakeBackend : IMavlinkBackend
         => Task.CompletedTask;
 
     public Task SendRawAsync(ReadOnlyMemory<byte> packet, CancellationToken ct = default)
+        => Task.CompletedTask;
+
+    public Task SendRawToAsync(ReadOnlyMemory<byte> packet, byte targetSystem, CancellationToken ct = default)
         => Task.CompletedTask;
 
     public void Dispose() { }

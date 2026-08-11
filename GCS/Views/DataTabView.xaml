@@ -110,8 +110,10 @@
             <StackPanel>
                 <TextBlock Text="AIRSPEED" Style="{StaticResource Label}"/>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="{Binding Airspeed, StringFormat=F1}" Style="{StaticResource Value}"/>
-                    <TextBlock Text="m/s" Style="{StaticResource Unit}"/>
+                    <!-- A dash when no sensor is fitted, rather than NaN or a false 0.0 -->
+                    <TextBlock Text="{Binding AirspeedText}" Style="{StaticResource Value}"/>
+                    <TextBlock Text="m/s" Style="{StaticResource Unit}"
+                               Visibility="{Binding HasAirspeed, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </StackPanel>
             </StackPanel>
         </Border>
@@ -128,9 +130,12 @@
                 <StackPanel Grid.Column="0">
                     <TextBlock Text="VOLTAGE" Style="{StaticResource Label}"/>
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding Voltage, StringFormat=F2}" 
+                        <!-- A dash when no pack is being measured, rather than the
+                             65.54 V that MAVLink's "unknown" sentinel decodes to. -->
+                        <TextBlock Text="{Binding VoltageText}"
                                   Style="{StaticResource Value}" FontSize="20"/>
-                        <TextBlock Text="V" Style="{StaticResource Unit}"/>
+                        <TextBlock Text="V" Style="{StaticResource Unit}"
+                                   Visibility="{Binding HasBattery, Converter={StaticResource BoolToVisibilityConverter}}"/>
                     </StackPanel>
                 </StackPanel>
                 
@@ -146,7 +151,7 @@
                 <StackPanel Grid.Column="2">
                     <TextBlock Text="REMAINING" Style="{StaticResource Label}"/>
                     <StackPanel Orientation="Horizontal">
-                        <TextBlock Text="{Binding BatteryRemaining}" 
+                        <TextBlock Text="{Binding RemainingText}"
                                   Style="{StaticResource Value}" FontSize="20">
                             <TextBlock.Foreground>
                                 <SolidColorBrush>

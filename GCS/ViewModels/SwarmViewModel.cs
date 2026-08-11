@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -156,6 +157,7 @@ public sealed class SwarmViewModel : ViewModelBase, IDisposable
     };
 
     private GCS.Core.Mavlink.VehicleKind _fleetKind = GCS.Core.Mavlink.VehicleKind.Unknown;
+    private GCS.Core.Mavlink.AutopilotKind _fleetAutopilot = GCS.Core.Mavlink.AutopilotKind.Unknown;
 
     /// <summary>
     /// Offer the modes the fleet actually has. The startup list is ArduPlane's; a
@@ -171,18 +173,31 @@ public sealed class SwarmViewModel : ViewModelBase, IDisposable
             .Distinct()
             .ToList();
 
+        var autopilots = Vehicles
+            .Select(v => v.State.Autopilot)
+            .Where(a => a != GCS.Core.Mavlink.AutopilotKind.Unknown)
+            .Distinct()
+            .ToList();
+
         var kind = kinds.Count == 1 ? kinds[0] : GCS.Core.Mavlink.VehicleKind.Unknown;
-        if (kind == _fleetKind) return;
+        var autopilot = autopilots.Count == 1 ? autopilots[0] : GCS.Core.Mavlink.AutopilotKind.Unknown;
+
+        if (kind == _fleetKind && autopilot == _fleetAutopilot) return;
 
         _fleetKind = kind;
-        if (kind is GCS.Core.Mavlink.VehicleKind.Plane or GCS.Core.Mavlink.VehicleKind.Unknown)
-            return;   // the startup list already is the plane list
+        _fleetAutopilot = autopilot;
+
+        bool isArduPlane = autopilot != GCS.Core.Mavlink.AutopilotKind.Px4 &&
+                           kind is GCS.Core.Mavlink.VehicleKind.Plane
+                                or GCS.Core.Mavlink.VehicleKind.Unknown;
+
+        if (isArduPlane) return;   // the startup list already is the ArduPlane list
 
         int previous = SelectedModeIndex;
         AvailableModes.Clear();
 
-        foreach (var (name, _) in GCS.Core.Mavlink.ArdupilotFlightModes.ModesFor(kind))
-            AvailableModes.Add(new FlightModeItem(FlightModeEnum.Unknown, name, false));
+        foreach (var choice in GCS.Core.Mavlink.FlightModeTable.ModesFor(autopilot, kind))
+            AvailableModes.Add(new FlightModeItem(FlightModeEnum.Unknown, choice.Name, false));
 
         SelectedModeIndex = previous >= 0 && previous < AvailableModes.Count ? previous : -1;
     }
@@ -326,6 +341,11 @@ public sealed class SwarmViewModel : ViewModelBase, IDisposable
 
         foreach (var v in Vehicles.Where(v => v.IsLeader))
             v.Station = null;
+
+        // The relay reads this from its own thread, and Vehicles is an
+        // ObservableCollection only ever mutated here on the UI thread — so it
+        // gets a finished list rather than something it could enumerate mid-change.
+        _px4FollowerIds = followers.Where(IsPx4).Select(v => v.SystemId).ToList();
     }
 
     private async Task ApplyFormationAsync()
@@ -337,14 +357,38 @@ public sealed class SwarmViewModel : ViewModelBase, IDisposable
         var followers = Followers();
         if (followers.Count == 0) { Status = "No followers to configure"; return; }
 
-        if (!Confirm(
-                $"Put {followers.Count} follower(s) into {FormationGeometry.DisplayName(SelectedFormation)} " +
-                $"behind UAV {leader.SystemId}?\n\n" +
-                $"Spacing {SpacingM:F0} m, vertical step {VerticalStepM:F0} m.\n\n" +
-                "This writes FOLL_* parameters and enables following on each vehicle.",
-                "Confirm formation")) return;
+        var px4 = followers.Where(IsPx4).ToList();
+
+        // PX4's Follow-Me is multicopter-only. A fixed-wing PX4 vehicle would take
+        // the FLW_TGT_* parameters and then refuse to enter the mode.
+        var wrongAirframe = px4
+            .Where(f => f.State.Kind == GCS.Core.Mavlink.VehicleKind.Plane)
+            .Select(f => f.Name)
+            .ToList();
+
+        if (wrongAirframe.Count > 0)
+        {
+            Status = $"PX4 Follow-Me is multicopter-only, so {string.Join(", ", wrongAirframe)} " +
+                     "cannot hold a formation station.";
+            Notifier.Warning("PX4 formation needs multicopters");
+            return;
+        }
+
+        // A PX4 follower holds station around a position this GCS streams, so
+        // without the leader's position there is nothing to stream and the
+        // formation would silently never engage.
+        float leaderHeightM = leader.State.Position?.AltitudeRelMeters ?? 0f;
+        if (px4.Count > 0 && leader.State.Position is null)
+        {
+            Status = $"UAV {leader.SystemId} has no position yet — PX4 followers " +
+                     "need the leader's position streamed to them.";
+            Notifier.Warning("Leader has no position fix");
+            return;
+        }
 
         PreviewFormation();
+        if (!Confirm(FormationConfirmationText(leader, followers, px4, leaderHeightM),
+                     "Confirm formation")) return;
 
         int configured = 0;
         var failed = new System.Collections.Generic.List<byte>();
@@ -352,8 +396,14 @@ public sealed class SwarmViewModel : ViewModelBase, IDisposable
         foreach (var follower in followers)
         {
             if (follower.Station is not { } station) continue;
-            var parameters = FollowConfiguration.ForFollower(
-                leader.SystemId, station, FollowYawBehaviour.SameAsLeadVehicle, (float)MaxDistanceM);
+
+            // Each firmware describes the same station its own way: ArduPilot as a
+            // Forward/Right/Down offset the follower resolves itself, PX4 as a
+            // distance and angle around a position we stream to it.
+            var parameters = IsPx4(follower)
+                ? Px4FollowConfiguration.ForFollower(station, leaderHeightM)
+                : FollowConfiguration.ForFollower(
+                    leader.SystemId, station, FollowYawBehaviour.SameAsLeadVehicle, (float)MaxDistanceM);
 
             try
             {
@@ -371,6 +421,10 @@ public sealed class SwarmViewModel : ViewModelBase, IDisposable
             }
         }
 
+        // Started before the operator commands FOLLOW ME: PX4 refuses to activate
+        // the mode until it already has a valid target estimate.
+        if (px4.Count > 0) StartFollowRelay();
+
         Status = failed.Count == 0
             ? $"{FormationGeometry.DisplayName(SelectedFormation)} applied to {configured} follower(s). " +
               "Put them into Follow mode to engage."
@@ -379,17 +433,140 @@ public sealed class SwarmViewModel : ViewModelBase, IDisposable
         if (failed.Count == 0) Notifier.Success(Status); else Notifier.Warning(Status);
     }
 
+    private static bool IsPx4(VehicleViewModel v) =>
+        v.State.Autopilot == GCS.Core.Mavlink.AutopilotKind.Px4;
+
+    /// <summary>
+    /// Spell out what each firmware is about to be told.
+    ///
+    /// The two mechanisms differ in ways the operator has to know before the
+    /// vehicles are in the air — above all that PX4 followers hold a fixed height
+    /// and stop following if this GCS goes away.
+    /// </summary>
+    private string FormationConfirmationText(
+        VehicleViewModel leader,
+        System.Collections.Generic.List<VehicleViewModel> followers,
+        System.Collections.Generic.List<VehicleViewModel> px4,
+        float leaderHeightM)
+    {
+        var text = $"Put {followers.Count} follower(s) into " +
+                   $"{FormationGeometry.DisplayName(SelectedFormation)} behind UAV {leader.SystemId}?\n\n" +
+                   $"Spacing {SpacingM:F0} m, vertical step {VerticalStepM:F0} m.\n";
+
+        if (px4.Count < followers.Count)
+            text += "\nArduPilot followers: writes FOLL_* parameters. They follow the " +
+                    "leader's own broadcasts, so they keep station even if this GCS stops.\n";
+
+        if (px4.Count > 0)
+        {
+            // FLW_TGT_HT is an altitude above home fixed at this moment, not an
+            // offset that tracks the leader as it climbs.
+            var heights = px4
+                .Where(f => f.Station is not null)
+                .Select(f => Px4FollowConfiguration.FollowHeightM(f.Station!.Value, leaderHeightM))
+                .DefaultIfEmpty(leaderHeightM)
+                .ToList();
+
+            text += $"\nPX4 followers ({px4.Count}): this GCS will stream the leader's position " +
+                    $"to them at 2 Hz. They will hold {heights.Min():F0}–{heights.Max():F0} m above home, " +
+                    "fixed — they do not climb with the leader.\n" +
+                    "If this GCS stops or the leader's telemetry drops, they hold position.\n";
+        }
+
+        return text;
+    }
+
     private async Task StopFollowingAsync()
     {
         if (!Confirm("Disable following on all vehicles?\n\nEach follower stops holding station.",
                      "Confirm stop following")) return;
 
+        // Stop feeding PX4 first. Their following is a flight mode, not a
+        // parameter, so cutting the target off is what actually ends it — they
+        // hold position where they are.
+        await StopFollowRelayAsync();
+
         await ForEachVehicle("Stop following", async (backend, sysid) =>
         {
+            // FOLL_ENABLE is ArduPilot's; PX4 has no equivalent to clear.
+            var vehicle = Vehicles.FirstOrDefault(v => v.SystemId == sysid);
+            if (vehicle is null || IsPx4(vehicle)) return;
+
             foreach (var p in FollowConfiguration.Disable())
                 await backend.SetParameterAsync(p.Key, p.Value, targetSystem: sysid);
         });
     }
+
+    // ── PX4 Follow-Me relay ──────────────────────────────────────────
+    //
+    // PX4 followers hold station around a position streamed to them rather than
+    // around the leader itself, so the GCS has to stay in the loop for as long as
+    // the formation is flying. See GCS.Core.Swarm.FollowTargetRelay.
+
+    private FollowTargetRelay? _followRelay;
+
+    /// <summary>
+    /// PX4 followers, as a finished list the relay thread can read safely.
+    /// Rebuilt on the UI thread by <see cref="PreviewFormation"/>, which runs
+    /// whenever the roster or the leader changes.
+    /// </summary>
+    private volatile IReadOnlyList<byte> _px4FollowerIds = Array.Empty<byte>();
+
+    /// <summary>True while this GCS is streaming the leader's position to PX4 followers.</summary>
+    public bool IsRelayingFollowTarget => _followRelay?.IsRunning == true;
+
+    private void StartFollowRelay()
+    {
+        var backend = _backend;
+        if (backend == null || _followRelay != null) return;
+
+        _followRelay = new FollowTargetRelay(
+            leaderPosition: () => Leader?.State.Position,
+            followers: () => _px4FollowerIds,
+            send: (packet, sysid, ct) => backend.SendRawToAsync(packet, sysid, ct));
+
+        _followRelay.ActionChanged += OnRelayActionChanged;
+        _followRelay.Start();
+        OnPropertyChanged(nameof(IsRelayingFollowTarget));
+    }
+
+    private async Task StopFollowRelayAsync()
+    {
+        var relay = _followRelay;
+        if (relay == null) return;
+
+        _followRelay = null;
+        relay.ActionChanged -= OnRelayActionChanged;
+        await relay.StopAsync();
+        relay.Dispose();
+
+        OnUi(() => OnPropertyChanged(nameof(IsRelayingFollowTarget)));
+    }
+
+    /// <summary>
+    /// Tell the operator when the relay stops feeding the followers. They hold
+    /// position when that happens, which is safe but is not the formation they
+    /// asked for — silence would leave them to notice it on the map.
+    /// </summary>
+    private void OnRelayActionChanged(RelayAction action) => OnUi(() =>
+    {
+        switch (action)
+        {
+            case RelayAction.Send:
+                Status = "Streaming leader position to PX4 followers.";
+                break;
+            case RelayAction.LeaderStale:
+                Status = "Leader telemetry stopped — PX4 followers will hold position.";
+                Notifier.Warning("Lost the leader's position; PX4 followers holding");
+                break;
+            case RelayAction.NoLeaderPosition:
+                Status = "Waiting for the leader's position before feeding PX4 followers.";
+                break;
+            case RelayAction.NoFollowers:
+                Status = "No PX4 followers to feed.";
+                break;
+        }
+    });
 
     public ICommand ArmAllCommand { get; }
     public ICommand DisarmAllCommand { get; }
@@ -452,7 +629,27 @@ public sealed class SwarmViewModel : ViewModelBase, IDisposable
 
     private async Task SetModeAllAsync(FlightModeEnum mode, string label)
     {
-        if (!Confirm($"Set ALL {Count} vehicle(s) to {label}?", $"Confirm {label} ALL")) return;
+        // The leader is what everyone else is holding station on. Commanding it to
+        // follow would have it chase the very position it is producing — and on
+        // PX4 that position is the one this GCS is relaying back to the fleet.
+        bool excludeLeader = GCS.Core.Mavlink.FlightModeTable.IsFollowMode(label) && Leader != null;
+
+        var targets = excludeLeader
+            ? Vehicles.Where(v => !v.IsLeader).Select(v => v.SystemId).ToList()
+            : Vehicles.Select(v => v.SystemId).ToList();
+
+        if (targets.Count == 0)
+        {
+            Status = $"{label}: no vehicles to send to";
+            return;
+        }
+
+        string question = excludeLeader
+            ? $"Set {targets.Count} follower(s) to {label}?\n\n" +
+              $"UAV {Leader!.SystemId} is the leader and is left in its current mode."
+            : $"Set ALL {Count} vehicle(s) to {label}?";
+
+        if (!Confirm(question, $"Confirm {label} ALL")) return;
 
         await ForEachVehicle(label, (backend, sysid) =>
         {
@@ -463,23 +660,34 @@ public sealed class SwarmViewModel : ViewModelBase, IDisposable
             // number. A vehicle without the mode is skipped rather than sent one
             // that means something else.
             var kind = vehicle?.State.Kind ?? GCS.Core.Mavlink.VehicleKind.Unknown;
-            uint? customMode = GCS.Core.Mavlink.ArdupilotFlightModes.ToCustomMode(kind, label);
+            var autopilot = vehicle?.State.Autopilot ?? GCS.Core.Mavlink.AutopilotKind.Unknown;
 
-            if (customMode is null)
+            var resolved = GCS.Core.Mavlink.FlightModeTable.Find(autopilot, kind, label);
+            if (resolved is null)
                 throw new InvalidOperationException($"{label} is not available on UAV {sysid}");
 
-            byte baseMode = (byte)(vehicle?.IsArmed == true ? 0xD1 : 0x51);
-            return backend.SendSetModeAsync(baseMode, customMode.Value, targetSystem: sysid);
-        });
+            return backend.SendFlightModeAsync(
+                resolved.Value, autopilot, vehicle?.IsArmed == true, targetSystem: sysid);
+        }, targets);
     }
 
-    /// <summary>Send one command to every known vehicle, reporting partial failures.</summary>
-    private async Task ForEachVehicle(string label, Func<IMavlinkBackend, byte, Task> send)
+    /// <summary>
+    /// Send one command to every known vehicle, reporting partial failures.
+    /// </summary>
+    /// <param name="only">
+    /// Restrict the command to these vehicles. Used where a command is wrong for
+    /// part of the fleet — the leader must not be told to follow, for instance.
+    /// </param>
+    private async Task ForEachVehicle(
+        string label,
+        Func<IMavlinkBackend, byte, Task> send,
+        IReadOnlyList<byte>? only = null)
     {
         var backend = _backend;
         if (backend == null) { Status = "Not connected"; return; }
 
-        var targets = Vehicles.Select(v => v.SystemId).ToList();
+        var targets = only ?? Vehicles.Select(v => v.SystemId).ToList();
+        if (targets.Count == 0) { Status = $"{label}: no vehicles to send to"; return; }
         int ok = 0;
         var failed = new System.Collections.Generic.List<byte>();
 
@@ -532,6 +740,10 @@ public sealed class SwarmViewModel : ViewModelBase, IDisposable
 
     public void Detach()
     {
+        // The relay holds the backend and would go on streaming a leader position
+        // that is no longer being updated.
+        _ = StopFollowRelayAsync();
+
         if (_backend != null)
         {
             _backend.VehicleDiscovered -= OnVehicleDiscovered;
@@ -570,7 +782,31 @@ public sealed class SwarmViewModel : ViewModelBase, IDisposable
             ActiveVehicle ??= vehicle;
             Leader ??= vehicle;
             RaiseCounts();
+
+            _ = RequestStreamsForAsync(backend, vehicle);
         });
+    }
+
+    /// <summary>
+    /// Ask a newly discovered follower to start streaming.
+    ///
+    /// Only the primary vehicle is asked on connect, so a follower whose SRn_*
+    /// rates are zero would show its mode and nothing else. Fire-and-forget: an
+    /// autopilot that does not support a message simply never sends it.
+    /// </summary>
+    private static async Task RequestStreamsForAsync(IMavlinkBackend backend, VehicleViewModel vehicle)
+    {
+        try
+        {
+            // Let a heartbeat or two land so the firmware is known and PX4 is not
+            // asked for ArduPilot-only messages.
+            await Task.Delay(1500);
+            await backend.RequestTelemetryStreamsAsync(vehicle.State.Autopilot, vehicle.SystemId);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[Swarm] Stream request for #{vehicle.SystemId} failed: {ex.Message}");
+        }
     }
 
     private void OnVehicleLost(byte systemId)

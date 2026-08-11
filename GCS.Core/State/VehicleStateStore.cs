@@ -94,7 +94,7 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
             // Carried separately because the plane-typed enum above cannot name a
             // Copter or Rover mode — their numbers mean something else entirely.
             if (!string.IsNullOrEmpty(hb.ModeName))
-                s = s with { FlightModeName = hb.ModeName, Kind = hb.Kind };
+                s = s with { FlightModeName = hb.ModeName, Kind = hb.Kind, Autopilot = hb.Autopilot };
 
             return s with { IsArmed = hb.IsArmed };
         });
@@ -107,7 +107,11 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
 
     private void OnPosition(byte sysId, PositionState position)
     {
-        if (Mine(sysId)) Mutate(s => s with { Position = position });
+        if (!Mine(sysId)) return;
+
+        // The estimator's own position outranks the raw GPS fallback from here on.
+        _hasFusedPosition = true;
+        Mutate(s => s with { Position = position });
     }
 
     private void OnVfrHud(byte sysId, VfrHudState hud)
@@ -120,9 +124,43 @@ public sealed class VehicleStateStore : IVehicleStateStore, IDisposable
         if (Mine(sysId)) Mutate(s => s with { Battery = battery });
     }
 
+    /// <summary>
+    /// True once GLOBAL_POSITION_INT has arrived. Until then the receiver's own fix
+    /// is used, so a healthy GPS still puts the vehicle on the map.
+    /// </summary>
+    private bool _hasFusedPosition;
+
     private void OnGpsState(byte sysId, GpsState gps)
     {
-        if (Mine(sysId)) Mutate(s => s with { Gps = gps });
+        if (!Mine(sysId)) return;
+
+        Mutate(s =>
+        {
+            s = s with { Gps = gps };
+
+            // PX4 publishes no global position until its estimator has fused one,
+            // which can be a long wait indoors even with a DGPS fix. The receiver's
+            // position is less accurate than the fused estimate but is far better
+            // than showing nothing — it is what QGroundControl falls back to.
+            if (!_hasFusedPosition && gps.HasPosition)
+            {
+                s = s with
+                {
+                    Position = new PositionState(
+                        LatitudeDeg: gps.LatitudeDeg,
+                        LongitudeDeg: gps.LongitudeDeg,
+                        AltitudeMslMeters: gps.AltitudeMslMeters,
+                        AltitudeRelMeters: 0,      // the receiver has no home reference
+                        HeadingDeg: gps.CourseOverGroundDeg,
+                        VelocityNorthMps: 0,
+                        VelocityEastMps: 0,
+                        VelocityDownMps: 0,
+                        TimestampUtc: gps.TimestampUtc)
+                };
+            }
+
+            return s;
+        });
     }
 
     private void OnVibration(byte sysId, VibrationState v)

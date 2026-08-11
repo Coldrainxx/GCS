@@ -17,6 +17,7 @@ public record VehicleState(
     // is. FlightMode above is plane-typed and is null on a Copter or Rover.
     string? FlightModeName = null,
     Mavlink.VehicleKind Kind = Mavlink.VehicleKind.Unknown,
+    Mavlink.AutopilotKind Autopilot = Mavlink.AutopilotKind.Unknown,
 
     VibrationState? Vibration = null,
     EkfStatusState? Ekf = null,

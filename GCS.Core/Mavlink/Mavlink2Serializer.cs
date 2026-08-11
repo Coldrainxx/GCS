@@ -120,6 +120,44 @@ public static class Mavlink2Serializer
         });
     }
 
+    /// <summary>
+    /// FOLLOW_TARGET (144) — the position PX4's Follow-Me mode flies around.
+    ///
+    /// PX4 reads only lat/lon/alt and the velocity triplet; it stamps the message
+    /// with its own clock on arrival and ignores everything else. The remaining
+    /// fields are still sent, zeroed, because the spec defines zero as "unknown"
+    /// for each of them.
+    ///
+    /// The message carries no target_system, so it is addressed by where it is
+    /// sent rather than by its contents.
+    /// </summary>
+    /// <param name="timestampMs">Sender's time since boot. PX4 overwrites it.</param>
+    /// <param name="altMslMeters">Target altitude above mean sea level.</param>
+    public static ReadOnlyMemory<byte> FollowTarget(
+        byte senderSys, byte senderComp,
+        double latitudeDeg, double longitudeDeg, float altMslMeters,
+        float velNorthMps, float velEastMps, float velDownMps,
+        ulong timestampMs)
+    {
+        // est_capabilities bit positions: POS = 0, VEL = 1, ACCEL = 2, ATT+RATES = 3.
+        const byte capabilities = (1 << 0) | (1 << 1);
+
+        return Build(144, senderSys, senderComp, new()
+        {
+            ["timestamp"] = timestampMs,
+            ["est_capabilities"] = capabilities,
+            ["lat"] = (int)Math.Round(latitudeDeg * 1e7),
+            ["lon"] = (int)Math.Round(longitudeDeg * 1e7),
+            ["alt"] = altMslMeters,
+            ["vel"] = new[] { velNorthMps, velEastMps, velDownMps },
+            ["acc"] = new float[3],
+            ["attitude_q"] = new float[4],
+            ["rates"] = new float[3],
+            ["position_cov"] = new float[3],
+            ["custom_state"] = 0UL,
+        });
+    }
+
     /// <summary>PARAM_REQUEST_READ (20)</summary>
     public static ReadOnlyMemory<byte> ParamRequestRead(
         byte targetSys, byte targetComp,

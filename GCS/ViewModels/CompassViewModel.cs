@@ -160,12 +160,33 @@ public sealed class CompassViewModel : ViewModelBase
         foreach (var m in Mags) m.Reset();
         foreach (var c in Coverage) c.Covered = false;
         IsCalibrating = true;
+
+        if (IsPx4)
+        {
+            // PX4 has no DO_START_MAG_CAL and no MAG_CAL_PROGRESS messages: one
+            // PREFLIGHT_CALIBRATION starts it, and progress arrives as STATUSTEXT.
+            _px4 = GCS.Core.Mavlink.Px4CalibrationState.Idle;
+            Status = "Follow the prompts — PX4 asks for each orientation in turn.";
+
+            var p = GCS.Core.Mavlink.Px4CalibrationCommands.Magnetometer;
+            await _sendCommand(MAV_CMD_PREFLIGHT_CALIBRATION, p.P1, p.P2, p.P3, p.P4, p.P5, p.P6, p.P7);
+            return;
+        }
+
         Status = "Rotate the vehicle slowly through all axes until each mag reaches 100%.";
         await _sendCommand(MAV_CMD_DO_START_MAG_CAL, 0, 1, 1, 0, 0, 0, 0);
     }
 
     private async Task AcceptAsync()
     {
+        if (IsPx4)
+        {
+            // PX4 stores the result itself when the procedure completes; there is
+            // nothing to accept.
+            Status = "PX4 saves the calibration itself — reboot to apply.";
+            return;
+        }
+
         await _sendCommand(MAV_CMD_DO_ACCEPT_MAG_CAL, 0, 0, 0, 0, 0, 0, 0);
         IsCalibrating = false;
         Status = "Calibration accepted — reboot to apply.";
@@ -173,9 +194,65 @@ public sealed class CompassViewModel : ViewModelBase
 
     private async Task CancelAsync()
     {
-        await _sendCommand(MAV_CMD_DO_CANCEL_MAG_CAL, 0, 0, 0, 0, 0, 0, 0);
+        if (IsPx4)
+        {
+            var p = GCS.Core.Mavlink.Px4CalibrationCommands.Cancel;
+            await _sendCommand(MAV_CMD_PREFLIGHT_CALIBRATION, p.P1, p.P2, p.P3, p.P4, p.P5, p.P6, p.P7);
+        }
+        else
+        {
+            await _sendCommand(MAV_CMD_DO_CANCEL_MAG_CAL, 0, 0, 0, 0, 0, 0, 0);
+        }
+
         IsCalibrating = false;
         Status = "Calibration cancelled.";
+    }
+
+    // ── PX4 ─────────────────────────────────────────────────────────
+
+    private const ushort MAV_CMD_PREFLIGHT_CALIBRATION = 241;
+
+    private GCS.Core.Mavlink.AutopilotKind _autopilot = GCS.Core.Mavlink.AutopilotKind.Unknown;
+    private GCS.Core.Mavlink.Px4CalibrationState _px4 = GCS.Core.Mavlink.Px4CalibrationState.Idle;
+
+    public bool IsPx4 => _autopilot == GCS.Core.Mavlink.AutopilotKind.Px4;
+
+    /// <summary>
+    /// The per-magnetometer progress bars and the accept button are ArduPilot's:
+    /// PX4 reports one overall progress and stores the result itself.
+    /// </summary>
+    public bool ShowMagProgress => !IsPx4;
+
+    public void SetAutopilot(GCS.Core.Mavlink.AutopilotKind autopilot)
+    {
+        if (autopilot == _autopilot || autopilot == GCS.Core.Mavlink.AutopilotKind.Unknown) return;
+
+        _autopilot = autopilot;
+        OnPropertyChanged(nameof(IsPx4));
+        OnPropertyChanged(nameof(ShowMagProgress));
+    }
+
+    /// <summary>PX4's calibration prompts. Ignored on ArduPilot, which uses MAG_CAL_*.</summary>
+    public void OnStatusText(string text)
+    {
+        if (!IsPx4 || !GCS.Core.Mavlink.Px4CalibrationParser.IsCalibrationMessage(text)) return;
+
+        _px4 = GCS.Core.Mavlink.Px4CalibrationParser.Apply(_px4, text);
+        Status = _px4.Instruction;
+
+        // One overall bar rather than per-mag: PX4 does not break progress down.
+        if (Mags.Count > 0)
+        {
+            Mags[0].Active = _px4.IsRunning;
+            Mags[0].Percent = _px4.ProgressPercent;
+            Mags[0].StatusText = _px4.CurrentSide ?? _px4.Phase.ToString();
+        }
+
+        if (_px4.Phase is GCS.Core.Mavlink.Px4CalibrationPhase.Done
+                       or GCS.Core.Mavlink.Px4CalibrationPhase.Failed)
+        {
+            IsCalibrating = false;
+        }
     }
 
     // ── Priority reorder (swaps COMPASS_PRIOn_ID) ─────────────────────

@@ -58,15 +58,26 @@ public class FailsafeViewModel : ViewModelBase
     /// settings differently, and writing the wrong name configures nothing at all
     /// while appearing to succeed.
     /// </summary>
-    public void SetVehicleKind(GCS.Core.Mavlink.VehicleKind kind)
+    public void SetVehicleKind(
+        GCS.Core.Mavlink.VehicleKind kind,
+        GCS.Core.Mavlink.AutopilotKind autopilot = GCS.Core.Mavlink.AutopilotKind.Unknown)
     {
-        if (kind == _vehicleKind || kind == GCS.Core.Mavlink.VehicleKind.Unknown) return;
+        bool kindChanged = kind != _vehicleKind && kind != GCS.Core.Mavlink.VehicleKind.Unknown;
+        bool autopilotChanged = autopilot != _autopilot &&
+                                autopilot != GCS.Core.Mavlink.AutopilotKind.Unknown;
 
-        _vehicleKind = kind;
-        _params = GCS.Core.Mavlink.FailsafeParameterSet.For(kind);
+        if (!kindChanged && !autopilotChanged) return;
+
+        if (kindChanged) _vehicleKind = kind;
+        if (autopilotChanged) _autopilot = autopilot;
+
+        _params = GCS.Core.Mavlink.FailsafeParameterSet.For(_autopilot, _vehicleKind);
 
         OnPropertyChanged(nameof(HasShortLongActions));
         OnPropertyChanged(nameof(VehicleKindText));
+        OnPropertyChanged(nameof(RadioThresholdLabel));
+        OnPropertyChanged(nameof(BatteryHint));
+        OnPropertyChanged(nameof(HasBatteryHint));
 
         // The previous vehicle's values are meaningless here.
         _ = RefreshFailsafeParams();
@@ -75,13 +86,27 @@ public class FailsafeViewModel : ViewModelBase
     /// <summary>Plane-only: a copter has no short/long failsafe action pair.</summary>
     public bool HasShortLongActions => _params.HasShortLongActions;
 
-    public string VehicleKindText => _vehicleKind switch
-    {
-        GCS.Core.Mavlink.VehicleKind.Copter => "Multirotor failsafe settings",
-        GCS.Core.Mavlink.VehicleKind.Rover => "Rover failsafe settings",
-        GCS.Core.Mavlink.VehicleKind.Plane => "Plane / VTOL failsafe settings",
-        _ => "Failsafe settings",
-    };
+    public string VehicleKindText => _autopilot == GCS.Core.Mavlink.AutopilotKind.Px4
+        ? "PX4 failsafe settings"
+        : _vehicleKind switch
+        {
+            GCS.Core.Mavlink.VehicleKind.Copter => "Multirotor failsafe settings",
+            GCS.Core.Mavlink.VehicleKind.Rover => "Rover failsafe settings",
+            GCS.Core.Mavlink.VehicleKind.Plane => "Plane / VTOL failsafe settings",
+            _ => "Failsafe settings",
+        };
+
+    /// <summary>
+    /// The threshold field means different things per firmware — a PWM level on
+    /// ArduPilot, a loss timeout in seconds on PX4 — so the label comes from the
+    /// parameter set rather than being fixed in the view.
+    /// </summary>
+    public string RadioThresholdLabel => _params.RadioThresholdLabel;
+
+    public string BatteryHint => _params.BatteryHint;
+    public bool HasBatteryHint => !string.IsNullOrEmpty(_params.BatteryHint);
+
+    private GCS.Core.Mavlink.AutopilotKind _autopilot = GCS.Core.Mavlink.AutopilotKind.Unknown;
 
     // ── Radio ────────────────────────────────────────────────────────
     public float FsPwm { get => _fsPwm; set => SetFloat(ref _fsPwm, value, nameof(FsPwm), _params.RadioPwm); }

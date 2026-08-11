@@ -5,9 +5,10 @@ using GCS.Core.Mavlink;
 namespace GCS.Core.Mission;
 
 /// <summary>
-/// GCS identity for outgoing packets.
+/// GCS identity for outgoing packets. Public because anything that builds a
+/// packet outside the backend needs the same identity — see FollowTargetRelay.
 /// </summary>
-internal static class GcsIdentity
+public static class GcsIdentity
 {
     public const byte SystemId = 255;
     public const byte ComponentId = 190;

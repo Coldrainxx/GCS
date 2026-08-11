@@ -36,8 +36,17 @@ public sealed class HeartbeatHandler : IMavlinkMessageHandler
         byte mavType = frame.Fields.TryGetValue("type", out var t) ? Convert.ToByte(t) : (byte)0;
         var kind = ArdupilotFlightModes.KindFromMavType(mavType);
 
-        var mode = ArdupilotFlightModes.PlaneMode(kind, customMode);
-        string modeName = ArdupilotFlightModes.Describe(kind, customMode);
+        // PX4 packs main/sub modes into custom_mode instead of using a flat number,
+        // so which firmware is flying decides how the value is read at all.
+        byte autopilotId = frame.Fields.TryGetValue("autopilot", out var a) ? Convert.ToByte(a) : (byte)0;
+        var autopilot = Px4FlightModes.KindFromMavAutopilot(autopilotId);
+
+        // The plane-typed enum is ArduPilot's; PX4 mode numbers do not map onto it.
+        var mode = autopilot == AutopilotKind.Px4
+            ? null
+            : ArdupilotFlightModes.PlaneMode(kind, customMode);
+
+        string modeName = FlightModeTable.Describe(autopilot, kind, customMode);
 
         _connection.OnHeartbeat(
             frame.SystemId,
@@ -52,7 +61,8 @@ public sealed class HeartbeatHandler : IMavlinkMessageHandler
             isArmed,
             now,
             kind,
-            modeName
+            modeName,
+            autopilot
         ));
     }
 }

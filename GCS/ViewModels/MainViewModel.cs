@@ -353,7 +353,9 @@ public class MainViewModel : ViewModelBase, IDisposable
                 // Let the heartbeat settle so the target system id is known.
                 await Task.Delay(1500);
                 var backend = _session?.Backend;
-                if (backend != null) await backend.RequestTelemetryStreamsAsync();
+                // By now a heartbeat has identified the firmware, so PX4 is not
+                // asked for ArduPilot-only messages (and vice versa).
+                if (backend != null) await backend.RequestTelemetryStreamsAsync(_lastAutopilot);
             }
             catch (Exception ex)
             {
@@ -561,6 +563,7 @@ public class MainViewModel : ViewModelBase, IDisposable
     /// </summary>
     /// <summary>Latest identified vehicle family, for screens that need it outside a state update.</summary>
     private GCS.Core.Mavlink.VehicleKind _lastVehicleKind = GCS.Core.Mavlink.VehicleKind.Unknown;
+    private GCS.Core.Mavlink.AutopilotKind _lastAutopilot = GCS.Core.Mavlink.AutopilotKind.Unknown;
 
     /// <summary>
     /// STL shown in the 3D view, chosen from the connected vehicle. A fixed-wing
@@ -624,9 +627,12 @@ public class MainViewModel : ViewModelBase, IDisposable
             OnPropertyChanged(nameof(UavModelFile));
         }
 
-        Failsafe.SetVehicleKind(state.Kind);
-        Parameters.SetVehicleKind(state.Kind);
-        Setup.SetVehicleKind(state.Kind);
+        if (state.Autopilot != GCS.Core.Mavlink.AutopilotKind.Unknown)
+            _lastAutopilot = state.Autopilot;
+
+        Failsafe.SetVehicleKind(state.Kind, state.Autopilot);
+        Parameters.SetVehicleKind(state.Kind, state.Autopilot);
+        Setup.SetVehicleKind(state.Kind, state.Autopilot);
 
         bool isConnected = state.FlightMode.HasValue || state.Position != null || state.Attitude != null;
         Preflight.UpdateConnectionState(isConnected);
