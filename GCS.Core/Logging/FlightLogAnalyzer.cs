@@ -71,6 +71,7 @@ public static class FlightLogAnalyzer
         bool? wasArmed = null;
         string? lastModeName = null;
         var kind = Mavlink.VehicleKind.Unknown;
+        var autopilot = Mavlink.AutopilotKind.Unknown;
         double? lastLat = null, lastLon = null;
         var findings = new HashSet<string>(StringComparer.Ordinal);
 
@@ -99,17 +100,31 @@ public static class FlightLogAnalyzer
                         uint customMode = Convert.ToUInt32(frame.Fields["custom_mode"]);
                         bool armed = (baseMode & MavModeFlagSafetyArmed) != 0;
 
-                        // Mode numbers mean different things per vehicle family, so
-                        // decode against the type this log was recorded from rather
-                        // than assuming a plane.
+                        // Mode numbers mean different things per vehicle family and
+                        // per firmware, so decode against what this log was actually
+                        // recorded from rather than assuming an ArduPlane. PX4 packs
+                        // a main and sub mode into custom_mode, which read as an
+                        // ArduPilot number gives values like 196608.
                         byte mavType = frame.Fields.TryGetValue("type", out var typeField)
                             ? Convert.ToByte(typeField) : (byte)0;
 
                         if (kind == Mavlink.VehicleKind.Unknown)
                             kind = Mavlink.ArdupilotFlightModes.KindFromMavType(mavType);
 
-                        string modeName = Mavlink.ArdupilotFlightModes.Describe(kind, customMode);
-                        var mode = Mavlink.ArdupilotFlightModes.PlaneMode(kind, customMode);
+                        if (autopilot == Mavlink.AutopilotKind.Unknown &&
+                            frame.Fields.TryGetValue("autopilot", out var autopilotField))
+                        {
+                            autopilot = Mavlink.Px4FlightModes.KindFromMavAutopilot(
+                                Convert.ToByte(autopilotField));
+                        }
+
+                        string modeName = Mavlink.FlightModeTable.Describe(autopilot, kind, customMode);
+
+                        // The plane-typed mode enum is ArduPlane's; it has no meaning
+                        // on PX4, where FlightModeName is the only mode the log has.
+                        var mode = autopilot == Mavlink.AutopilotKind.Px4
+                            ? null
+                            : Mavlink.ArdupilotFlightModes.PlaneMode(kind, customMode);
 
                         if (wasArmed != armed)
                         {
@@ -141,6 +156,7 @@ public static class FlightLogAnalyzer
                             FlightMode = mode,
                             FlightModeName = modeName,
                             Kind = kind,
+                            Autopilot = autopilot,
                             IsArmed = armed,
                             Connection = new ConnectionState(true, frame.SystemId, frame.ComponentId, now),
                         };
