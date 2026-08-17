@@ -209,7 +209,9 @@ public sealed class MavlinkBackend : IMavlinkBackend
             new MissionAckHandler(result => MissionAckReceived?.Invoke(result)),
             
             // Parameter handler
-            new ParamValueHandler((sys, id, val) => ParameterReceived?.Invoke(sys, id, val)),
+            new ParamValueHandler(
+                (sys, id, val) => ParameterReceived?.Invoke(sys, id, val),
+                (sys, id, type) => _paramTypes[(sys, id)] = type),
         };
 
         // Three messages, four ESCs each, merged into one array before publishing
@@ -332,8 +334,22 @@ public sealed class MavlinkBackend : IMavlinkBackend
     // Tick Loop
     // ═══════════════════════════════════════════════════════════════
 
+    /// <summary>
+    /// Each vehicle's declared type per parameter, as reported in PARAM_VALUE.
+    ///
+    /// Keyed per vehicle rather than by name alone: a type is a property of the
+    /// firmware answering, not of the name.
+    /// </summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<(byte Sys, string Id), byte>
+        _paramTypes = new();
+
+    /// <summary>Ticks between GCS heartbeats — 200 ms each, so 1 Hz.</summary>
+    private const int HeartbeatEveryTicks = 5;
+
     private async Task TickLoop(CancellationToken token)
     {
+        int tick = 0;
+
         try
         {
             while (!token.IsCancellationRequested)
@@ -342,10 +358,53 @@ public sealed class MavlinkBackend : IMavlinkBackend
                 _connection.Tick(now);
                 _vehicles.Tick(now);
                 _commandAckTracker.Tick();
+
+                if (tick++ % HeartbeatEveryTicks == 0)
+                    await SendGcsHeartbeatAsync(token);
+
                 await Task.Delay(200, token);
             }
         }
         catch (OperationCanceledException) { }
+    }
+
+    /// <summary>
+    /// Announce this GCS to the vehicles, once a second.
+    ///
+    /// Not optional: PX4 refuses to arm while it has never seen a MAV_TYPE_GCS
+    /// heartbeat and NAV_DLL_ACT is set, and ArduPilot's FS_GCS_ENABL failsafe
+    /// watches for the same message. It also serves as the first packet a vehicle
+    /// hears from us, which is what makes a link start streaming where the vehicle
+    /// waits to be spoken to before it replies.
+    ///
+    /// Sent from the moment the transport starts, before any vehicle is known —
+    /// waiting for a heartbeat before sending one would deadlock exactly those
+    /// links.
+    /// </summary>
+    private async Task SendGcsHeartbeatAsync(CancellationToken token)
+    {
+        var packet = Mavlink2Serializer.GcsHeartbeat(GcsSysId, GcsCompId);
+        var known = _vehicles.KnownSystems;
+
+        try
+        {
+            if (known.Count == 0)
+            {
+                // Nobody discovered yet: the configured address is all we have.
+                await SendPacketAsync(packet, 0, token);
+                return;
+            }
+
+            // Addressed per vehicle so it reaches each one on a link where they
+            // have separate addresses. HEARTBEAT carries no target of its own.
+            foreach (byte sysId in known)
+                await SendPacketAsync(packet, sysId, token);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[Backend] GCS heartbeat failed: {ex.Message}");
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -644,17 +703,26 @@ public sealed class MavlinkBackend : IMavlinkBackend
         EnsureConnected();
         var (sys, comp) = ResolveTarget(targetSystem);
 
+        // PX4 checks the declared type against what it holds and rejects a
+        // mismatch outright — "param types mismatch param: FLW_TGT_ALT_M" — so an
+        // integer parameter written as REAL32 is silently never applied. The type
+        // the vehicle itself reported is the reliable one.
+        byte paramType = MavParamValue.TypeForWrite(
+            paramId,
+            _paramTypes.TryGetValue((sys, paramId), out var learned) ? learned : null);
+
         var packet = Mavlink2Serializer.ParamSet(
             targetSys: sys,
             targetComp: comp,
             senderSys: GcsSysId,
             senderComp: GcsCompId,
             paramId: paramId,
-            value: value);
+            value: MavParamValue.Encode(value, paramType),
+            paramType: paramType);
 
         await SendPacketAsync(packet, sys, ct);
 
-        Debug.WriteLine($"[MavlinkBackend] SetParameter: {paramId} = {value}");
+        Debug.WriteLine($"[MavlinkBackend] SetParameter: {paramId} = {value} (type {paramType})");
     }
 
     public async Task RequestParameterAsync(string paramId, byte targetSystem = 0, CancellationToken ct = default)

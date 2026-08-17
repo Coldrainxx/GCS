@@ -21,9 +21,21 @@ public sealed class HeartbeatHandler : IMavlinkMessageHandler
         _onHeartbeat = onHeartbeat;
     }
 
+    /// <summary>MAV_TYPE_GCS — a ground station, not something that flies.</summary>
+    private const byte MavTypeGcs = 6;
+
     public void Handle(Frame frame)
     {
         var now = DateTime.UtcNow;
+
+        byte type = frame.Fields.TryGetValue("type", out var typeField)
+            ? Convert.ToByte(typeField) : (byte)0;
+
+        // Ground stations announce themselves with a heartbeat too — ours, and any
+        // other one sharing the link, which on a radio is a normal setup. Treating
+        // one as a vehicle puts a phantom aircraft in the roster that can be
+        // selected, commanded and counted in a formation.
+        if (type == MavTypeGcs) return;
 
         uint customMode = Convert.ToUInt32(frame.Fields["custom_mode"]);
         byte baseMode = Convert.ToByte(frame.Fields["base_mode"]);
@@ -33,8 +45,7 @@ public sealed class HeartbeatHandler : IMavlinkMessageHandler
 
         // Mode numbers are per vehicle family: Copter mode 5 is Loiter, Plane 5 is
         // FBWA. Decode against the right table rather than assuming a plane.
-        byte mavType = frame.Fields.TryGetValue("type", out var t) ? Convert.ToByte(t) : (byte)0;
-        var kind = ArdupilotFlightModes.KindFromMavType(mavType);
+        var kind = ArdupilotFlightModes.KindFromMavType(type);
 
         // PX4 packs main/sub modes into custom_mode instead of using a flat number,
         // so which firmware is flying decides how the value is read at all.

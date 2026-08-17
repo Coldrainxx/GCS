@@ -296,6 +296,31 @@ public class FollowTargetRelayTests
         Assert.Equal(8, followMe.Px4SubMode);
     }
 
+    /// <summary>
+    /// PX4 clears "no connection to the ground control station" only on a
+    /// heartbeat whose type is MAV_TYPE_GCS, and blocks arming without one when
+    /// NAV_DLL_ACT is set. ArduPilot's FS_GCS_ENABL watches the same message.
+    /// </summary>
+    [Fact]
+    public void TheGcsHeartbeatIsTheTypeAVehicleLooksFor()
+    {
+        MavlinkInit.EnsureInitialized();
+
+        var packet = Mavlink2Serializer.GcsHeartbeat(senderSys: 255, senderComp: 190);
+
+        var frame = new Frame();
+        Assert.True(frame.TryParse(packet.Span));
+        Assert.Equal(0u, frame.MessageId);
+        Assert.Equal(255, frame.SystemId);
+
+        // MAV_TYPE_GCS. Anything else and the vehicle keeps waiting.
+        Assert.Equal(6, Convert.ToInt32(frame.Fields["type"]));
+
+        // MAV_AUTOPILOT_INVALID: we are not an autopilot, and claiming to be one
+        // would put a phantom vehicle in our own roster.
+        Assert.Equal(8, Convert.ToInt32(frame.Fields["autopilot"]));
+    }
+
     [Fact]
     public void SouthernAndWesternPositionsKeepTheirSign()
     {

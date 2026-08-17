@@ -121,6 +121,32 @@ public static class Mavlink2Serializer
     }
 
     /// <summary>
+    /// HEARTBEAT (0) announcing this GCS.
+    ///
+    /// Both firmwares watch for it. PX4 clears its "connection to the ground
+    /// control station" only on a heartbeat whose type is MAV_TYPE_GCS, and
+    /// refuses to arm without one when NAV_DLL_ACT is set; ArduPilot's FS_GCS_ENABL
+    /// failsafe watches the same thing. A GCS that never sends one looks to the
+    /// vehicle exactly like a GCS that has gone away.
+    /// </summary>
+    public static ReadOnlyMemory<byte> GcsHeartbeat(byte senderSys, byte senderComp)
+    {
+        const byte MavTypeGcs = 6;
+        const byte MavAutopilotInvalid = 8;   // not an autopilot
+        const byte MavStateActive = 4;
+
+        return Build(0, senderSys, senderComp, new()
+        {
+            ["type"] = MavTypeGcs,
+            ["autopilot"] = MavAutopilotInvalid,
+            ["base_mode"] = (byte)0,
+            ["custom_mode"] = 0u,
+            ["system_status"] = MavStateActive,
+            ["mavlink_version"] = (byte)3,
+        });
+    }
+
+    /// <summary>
     /// FOLLOW_TARGET (144) — the position PX4's Follow-Me mode flies around.
     ///
     /// PX4 reads only lat/lon/alt and the velocity triplet; it stamps the message

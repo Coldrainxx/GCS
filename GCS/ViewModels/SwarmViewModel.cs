@@ -470,6 +470,12 @@ public sealed class SwarmViewModel : ViewModelBase, IDisposable
             text += $"\nPX4 followers ({px4.Count}): this GCS will stream the leader's position " +
                     $"to them at 2 Hz. They will hold {heights.Min():F0}–{heights.Max():F0} m above home, " +
                     "fixed — they do not climb with the leader.\n" +
+                    // FLW_TGT_FA is measured from the target's course, where
+                    // ArduPilot's FOLL_OFS_TYPE=1 offset is measured from its
+                    // heading. A stationary leader has no course, so the formation
+                    // only points the right way once it is flying.
+                    "Stations are relative to the leader's direction of travel, not " +
+                    "where its nose points — they settle once the leader is moving.\n" +
                     "If this GCS stops or the leader's telemetry drops, they hold position.\n";
         }
 
